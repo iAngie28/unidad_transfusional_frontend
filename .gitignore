@@ -21,3 +21,28 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Dependencias de Node (pesan muchísimo y se instalan con npm install)
+node_modules/
+
+# Producción / Compilación
+build/
+dist/
+
+# Variables de entorno con URLs de API y llaves
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDEs y Sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
