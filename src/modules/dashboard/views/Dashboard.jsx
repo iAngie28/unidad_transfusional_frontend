@@ -20,7 +20,7 @@ const Dashboard = () => {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-              Bienvenido, {user?.username || user?.first_name || 'Usuario'} 👋
+              Bienvenido, {user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || 'Usuario'} 👋
             </h1>
             <p className="mt-2 text-gray-500 text-lg">
               Aquí tienes un resumen de la actividad de la Unidad Transfusional hoy.

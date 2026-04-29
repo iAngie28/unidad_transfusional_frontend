@@ -43,9 +43,11 @@ const Navbar = ({ onMenuClick }) => {
           <div className="flex items-center gap-3 border-l border-gray-200 pl-6">
             <div className="hidden md:flex flex-col items-end">
               <span className="text-sm font-medium text-gray-900">
-                {user?.username || user?.first_name || 'Usuario'}
+                {user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || 'Usuario'}
               </span>
-              <span className="text-xs text-gray-500">Personal Médico</span>
+              <span className="text-xs text-gray-500">
+                {user?.role_display || user?.role || 'Personal Médico'}
+              </span>
             </div>
             
             <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md">
