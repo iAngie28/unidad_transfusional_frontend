@@ -1,13 +1,98 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Activity, Settings, FileText, ActivitySquare } from 'lucide-react';
+import React, { useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { LayoutDashboard, Users, Shield, Activity, Settings, FileText, ActivitySquare, ChevronDown, ChevronRight, Lock, Stethoscope, ClipboardList, CalendarClock, FileCheck, CreditCard, Package, ListTree, AlertTriangle, FlaskConical, Microscope, BookOpen } from 'lucide-react';
+
+const NavGroup = ({ item, currentPath }) => {
+  const isChildActive = item.subItems.some(sub => currentPath === sub.path);
+  // Default to open if a child is active
+  const [isOpen, setIsOpen] = useState(isChildActive);
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-slate-400 hover:bg-slate-800/50 hover:text-white ${isChildActive ? 'text-white' : ''}`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`transition-transform duration-200 group-hover:scale-110 ${isChildActive ? 'text-blue-400' : ''}`}>
+            {item.icon}
+          </div>
+          <span className="font-medium">{item.name}</span>
+        </div>
+        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      
+      {isOpen && (
+        <div className="pl-11 pr-2 space-y-1 mt-1 animate-fade-in">
+          {item.subItems.map(sub => (
+            <NavLink
+              key={sub.name}
+              to={sub.path}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group ${
+                  isActive
+                    ? 'bg-blue-600/20 text-blue-400 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/30'
+                }`
+              }
+            >
+              <div className="transition-transform duration-200 group-hover:scale-110">
+                {sub.icon}
+              </div>
+              <span className="font-medium text-sm">{sub.name}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Sidebar = ({ isOpen, onClose }) => {
+  const location = useLocation();
+
   const navItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
-    { name: 'Pacientes', path: '/pacientes', icon: <Users size={20} /> },
-    { name: 'Donaciones', path: '/donaciones', icon: <Activity size={20} /> },
-    { name: 'Transfusiones', path: '/transfusiones', icon: <ActivitySquare size={20} /> },
+    { 
+      name: 'Seguridad', 
+      icon: <Lock size={20} />, 
+      subItems: [
+        { name: 'Personal', path: '/usuarios', icon: <Users size={16} /> },
+        { name: 'Roles', path: '/roles', icon: <Shield size={16} /> },
+      ]
+    },
+    { 
+      name: 'Admisión', 
+      icon: <ClipboardList size={20} />, 
+      subItems: [
+        { name: 'Pacientes', path: '/pacientes', icon: <Users size={16} /> },
+        { name: 'Especialidades', path: '/especialidades', icon: <BookOpen size={16} /> },
+        { name: 'Médicos', path: '/medicos', icon: <Stethoscope size={16} /> },
+        { name: 'Solicitudes', path: '/solicitudes', icon: <FileText size={16} /> },
+        { name: 'Citaciones', path: '/citaciones', icon: <CalendarClock size={16} /> },
+        { name: 'Consentimientos', path: '/consentimientos', icon: <FileCheck size={16} /> },
+        { name: 'Pagos', path: '/pagos', icon: <CreditCard size={16} /> },
+      ]
+    },
+    { 
+      name: 'Inventario', 
+      icon: <Package size={20} />, 
+      subItems: [
+        { name: 'Hemocomponentes', path: '/hemocomponentes', icon: <Package size={16} /> },
+        { name: 'Trazabilidad', path: '/trazabilidad', icon: <ListTree size={16} /> },
+        { name: 'Descartes', path: '/descartes', icon: <AlertTriangle size={16} /> },
+      ]
+    },
+    { 
+      name: 'Laboratorio', 
+      icon: <FlaskConical size={20} />, 
+      subItems: [
+        { name: 'Pruebas a Paciente', path: '/pruebas-paciente', icon: <Users size={16} /> },
+        { name: 'Pruebas Cruzadas', path: '/pruebas-bolsa', icon: <Microscope size={16} /> },
+        { name: 'Transfusiones', path: '/transfusiones', icon: <ActivitySquare size={16} /> },
+        { name: 'Reacciones Adversas', path: '/reacciones', icon: <AlertTriangle size={16} /> },
+      ]
+    },
     { name: 'Reportes', path: '/reportes', icon: <FileText size={20} /> },
     { name: 'Configuración', path: '/configuracion', icon: <Settings size={20} /> },
   ];
@@ -43,22 +128,26 @@ const Sidebar = ({ isOpen, onClose }) => {
 
           <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
             {navItems.map((item) => (
-              <NavLink
-                key={item.name}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                  }`
-                }
-              >
-                <div className="transition-transform duration-200 group-hover:scale-110">
-                  {item.icon}
-                </div>
-                <span className="font-medium">{item.name}</span>
-              </NavLink>
+              item.subItems ? (
+                <NavGroup key={item.name} item={item} currentPath={location.pathname} />
+              ) : (
+                <NavLink
+                  key={item.name}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                        : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                    }`
+                  }
+                >
+                  <div className="transition-transform duration-200 group-hover:scale-110">
+                    {item.icon}
+                  </div>
+                  <span className="font-medium">{item.name}</span>
+                </NavLink>
+              )
             ))}
           </nav>
           
