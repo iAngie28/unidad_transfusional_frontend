@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Shield, Activity, Settings, FileText, ActivitySquare, ChevronDown, ChevronRight, Lock, Stethoscope, ClipboardList, CalendarClock, FileCheck, CreditCard, Package, ListTree, AlertTriangle, FlaskConical, Microscope, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Activity, Settings, FileText, ActivitySquare, ChevronDown, ChevronRight, Lock, Stethoscope, ClipboardList, CalendarClock, FileCheck, CreditCard, Package, ListTree, AlertTriangle, FlaskConical, Microscope, BookOpen, Building2 } from 'lucide-react';
 
 const NavGroup = ({ item, currentPath }) => {
   const isChildActive = item.subItems.some(sub => currentPath === sub.path);
@@ -66,6 +66,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: <ClipboardList size={20} />, 
       subItems: [
         { name: 'Pacientes', path: '/pacientes', icon: <Users size={16} /> },
+        { name: 'Servicios', path: '/servicios', icon: <Stethoscope size={16} /> },
         { name: 'Especialidades', path: '/especialidades', icon: <BookOpen size={16} /> },
         { name: 'Médicos', path: '/medicos', icon: <Stethoscope size={16} /> },
         { name: 'Solicitudes', path: '/solicitudes', icon: <FileText size={16} /> },
@@ -79,6 +80,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       icon: <Package size={20} />, 
       subItems: [
         { name: 'Hemocomponentes', path: '/hemocomponentes', icon: <Package size={16} /> },
+        { name: 'Hospitales', path: '/hospitales', icon: <Building2 size={16} /> },
         { name: 'Trazabilidad', path: '/trazabilidad', icon: <ListTree size={16} /> },
         { name: 'Descartes', path: '/descartes', icon: <AlertTriangle size={16} /> },
       ]

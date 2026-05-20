@@ -1,30 +1,63 @@
 import React, { useState, useEffect } from 'react';
 import { getCitaciones, createCitacion, updateCitacion, deleteCitacion } from '../services/citacionService';
 import { getSolicitudes } from '../services/solicitudService';
+import { getServicios } from '../services/servicioService';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Users, Plus, Edit2, Trash2, Search, X, CalendarClock } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, CalendarClock } from 'lucide-react';
+
+const getBoliviaNow = () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/La_Paz',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map(part => [part.type, part.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`
+  };
+};
+
+const HEMOCOMPONENTES = [
+  { value: 'PLASMA_FRESCO_CONGELADO', label: 'Plasma fresco congelado' },
+  { value: 'CRIOPRECIPITADOS', label: 'Crioprecipitados' },
+  { value: 'CONCENTRADO_PLAQUETAS', label: 'Concentrado de plaquetas' },
+  { value: 'PAQUETE_GLOBULAR', label: 'Paquete globular' },
+  { value: 'CONCENTRADO_HELITROCITO_PLAQUETAS', label: 'Concentrado de helitrocito y plaquetas por aféresis' },
+  { value: 'GLOBULO_ROJO_LAVADO', label: 'Globulo rojo lavado' }
+];
+
+const GRUPOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const getInitialCitacionForm = (userId = '') => ({
+  nro_solicitud: '',
+  id_user: userId,
+  fecha: getBoliviaNow().date,
+  hora: getBoliviaNow().time,
+  id_servicio: '',
+  sala_cama: '',
+  cantidad: '',
+  codigo_donante: '',
+  grupo_factor: '',
+  tipo: ''
+});
 
 const CitacionManagement = () => {
   const { user } = useAuth();
+  const boliviaNow = getBoliviaNow();
   const [citaciones, setCitaciones] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
+  const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCitacion, setEditingCitacion] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro_solicitud: '',
-    id_user: user?.id || '',
-    fecha: new Date().toISOString().split('T')[0],
-    hora: new Date().toTimeString().split(' ')[0].substring(0, 5),
-    servicio: '',
-    sala_cama: '',
-    cantidad: '',
-    codigo_donante: '',
-    grupo_factor: '',
-    tipo: ''
-  });
+  const [formData, setFormData] = useState(getInitialCitacionForm(user?.id || ''));
 
   useEffect(() => {
     fetchData();
@@ -33,12 +66,14 @@ const CitacionManagement = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [citacionesData, solicitudesData] = await Promise.all([
+      const [citacionesData, solicitudesData, serviciosData] = await Promise.all([
         getCitaciones(),
-        getSolicitudes()
+        getSolicitudes(),
+        getServicios()
       ]);
       setCitaciones(citacionesData.results || citacionesData || []);
       setSolicitudes(solicitudesData.results || solicitudesData || []);
+      setServicios(serviciosData.results || serviciosData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -54,7 +89,7 @@ const CitacionManagement = () => {
         id_user: citacion.id_user || user?.id || '',
         fecha: citacion.fecha || '',
         hora: citacion.hora ? citacion.hora.substring(0, 5) : '',
-        servicio: citacion.servicio || '',
+        id_servicio: citacion.id_servicio || '',
         sala_cama: citacion.sala_cama || '',
         cantidad: citacion.cantidad || '',
         codigo_donante: citacion.codigo_donante || '',
@@ -63,18 +98,7 @@ const CitacionManagement = () => {
       });
     } else {
       setEditingCitacion(null);
-      setFormData({
-        nro_solicitud: '',
-        id_user: user?.id || '',
-        fecha: new Date().toISOString().split('T')[0],
-        hora: new Date().toTimeString().split(' ')[0].substring(0, 5),
-        servicio: '',
-        sala_cama: '',
-        cantidad: '',
-        codigo_donante: '',
-        grupo_factor: '',
-        tipo: ''
-      });
+      setFormData(getInitialCitacionForm(user?.id || ''));
     }
     setIsModalOpen(true);
   };
@@ -127,8 +151,12 @@ const CitacionManagement = () => {
   const filteredCitaciones = citaciones.filter(c => 
     (c.codigo_donante?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (c.nro_solicitud?.toLowerCase() || '').includes(search.toLowerCase()) ||
-    (c.tipo?.toLowerCase() || '').includes(search.toLowerCase())
+    (c.tipo?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (c.servicio_nombre?.toLowerCase() || '').includes(search.toLowerCase())
   );
+
+  const maxHora = formData.fecha === boliviaNow.date ? boliviaNow.time : undefined;
+  const formatTipo = (tipo) => HEMOCOMPONENTES.find(item => item.value === tipo)?.label || tipo;
 
   return (
     <>
@@ -204,12 +232,12 @@ const CitacionManagement = () => {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <span className="font-bold text-red-600">{c.grupo_factor}</span>
-                          <span className="text-xs text-gray-500">{c.tipo} ({c.cantidad} U)</span>
+                          <span className="text-xs text-gray-500">{formatTipo(c.tipo)} ({c.cantidad} U)</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-gray-900">{c.fecha}</div>
-                        <div className="text-xs text-gray-500">{c.hora?.substring(0, 5)} • {c.servicio}</div>
+                        <div className="text-xs text-gray-500">{c.hora?.substring(0, 5)} • {c.servicio_nombre}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -278,10 +306,11 @@ const CitacionManagement = () => {
                   <input 
                     type="text" 
                     required
+                    pattern="[A-Za-z0-9]+"
                     value={formData.codigo_donante}
                     onChange={(e) => setFormData({...formData, codigo_donante: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none uppercase"
-                    placeholder="Ej: DON-123"
+                    placeholder="Ej: DON123"
                   />
                 </div>
 
@@ -294,14 +323,9 @@ const CitacionManagement = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-white font-bold text-red-700"
                   >
                     <option value="" className="font-normal text-gray-900">-- Sel --</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
+                    {GRUPOS.map(grupo => (
+                      <option key={grupo} value={grupo}>{grupo}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -310,6 +334,7 @@ const CitacionManagement = () => {
                   <input 
                     type="date" 
                     required
+                    max={boliviaNow.date}
                     value={formData.fecha}
                     onChange={(e) => setFormData({...formData, fecha: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
@@ -320,6 +345,7 @@ const CitacionManagement = () => {
                   <input 
                     type="time" 
                     required
+                    max={maxHora}
                     value={formData.hora}
                     onChange={(e) => setFormData({...formData, hora: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
@@ -328,32 +354,38 @@ const CitacionManagement = () => {
 
                 <div className="space-y-1.5 md:col-span-2">
                   <label className="text-sm font-medium text-gray-700">Tipo de Donación *</label>
-                  <input 
-                    type="text" 
+                  <select
                     required
                     value={formData.tipo}
                     onChange={(e) => setFormData({...formData, tipo: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
-                    placeholder="Ej: Sangre Total, Aféresis de Plaquetas..."
-                  />
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {HEMOCOMPONENTES.map(item => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">Servicio *</label>
-                  <input 
-                    type="text" 
+                  <select
                     required
-                    value={formData.servicio}
-                    onChange={(e) => setFormData({...formData, servicio: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
-                    placeholder="Ej: Banco de Sangre, Terapia..."
-                  />
+                    value={formData.id_servicio}
+                    onChange={(e) => setFormData({...formData, id_servicio: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                  >
+                    <option value="">-- Seleccionar Servicio --</option>
+                    {servicios.map(servicio => (
+                      <option key={servicio.id} value={servicio.id}>{servicio.nombre}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">Cantidad *</label>
                   <input 
                     type="number" 
-                    required min="1" max="10"
+                    required min="1" max="10" step="1" inputMode="numeric"
                     value={formData.cantidad}
                     onChange={(e) => setFormData({...formData, cantidad: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
@@ -364,6 +396,7 @@ const CitacionManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Sala / Cama</label>
                   <input 
                     type="text" 
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ]*"
                     value={formData.sala_cama}
                     onChange={(e) => setFormData({...formData, sala_cama: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"

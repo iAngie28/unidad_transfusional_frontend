@@ -3,6 +3,66 @@ import { getHemocomponentes, createHemocomponente, updateHemocomponente, deleteH
 import { getTrazabilidades } from '../services/trazabilidadService';
 import { Droplet, Plus, Edit2, Trash2, Search, X, Package, Eye, ListTree, Activity } from 'lucide-react';
 
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+
+const TIPOS_HEMOCOMPONENTE = [
+  { value: 'PLASMA_FRESCO_CONGELADO', label: 'Plasma fresco congelado' },
+  { value: 'CRIOPRECIPITADOS', label: 'Crioprecipitados' },
+  { value: 'CONCENTRADO_PLAQUETAS', label: 'Concentrado de plaquetas' },
+  { value: 'PAQUETE_GLOBULAR', label: 'Paquete globular' },
+  { value: 'CONCENTRADO_HELITROCITO_PLAQUETAS', label: 'Concentrado de helitrocito y plaquetas por aféresis' },
+  { value: 'GLOBULO_ROJO_LAVADO', label: 'Globulo rojo lavado' }
+];
+
+const GRUPOS_SANGUINEOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const ESTADOS_HEMOCOMPONENTE = [
+  { value: 'DISPONIBLE', label: 'Disponible' },
+  { value: 'RESERVADO', label: 'Reservado' },
+  { value: 'DESPACHADO', label: 'Despachado' },
+  { value: 'TRANSFUNDIDO', label: 'Transfundido' },
+  { value: 'DESCARTADO', label: 'Descartado' },
+  { value: 'VENCIDO', label: 'Vencido' }
+];
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const getInitialFormData = () => ({
+  nro_bolsa: '',
+  nro_tubuladura: '',
+  tipo: '',
+  grupo_sanguineo: '',
+  estado: 'DISPONIBLE',
+  fecha_ingreso: getBoliviaDateTimeLocal(),
+  fecha_vencimiento: '',
+  devuelto: false
+});
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
 const HemocomponenteManagement = () => {
   const [hemocomponentes, setHemocomponentes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,16 +74,7 @@ const HemocomponenteManagement = () => {
   const [loadingTrazabilidad, setLoadingTrazabilidad] = useState(false);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro_bolsa: '',
-    nro_tubuladura: '',
-    tipo: '',
-    grupo_sanguineo: '',
-    estado: 'DISPONIBLE',
-    fecha_ingreso: new Date().toISOString().slice(0, 16), // datetime-local format
-    fecha_vencimiento: '',
-    devuelto: false
-  });
+  const [formData, setFormData] = useState(getInitialFormData());
 
   useEffect(() => {
     fetchData();
@@ -50,24 +101,23 @@ const HemocomponenteManagement = () => {
         tipo: hemo.tipo || '',
         grupo_sanguineo: hemo.grupo_sanguineo || '',
         estado: hemo.estado || 'DISPONIBLE',
-        fecha_ingreso: hemo.fecha_ingreso ? new Date(hemo.fecha_ingreso).toISOString().slice(0, 16) : '',
-        fecha_vencimiento: hemo.fecha_vencimiento ? new Date(hemo.fecha_vencimiento).toISOString().slice(0, 16) : '',
+        fecha_ingreso: hemo.fecha_ingreso ? getBoliviaDateTimeLocal(hemo.fecha_ingreso) : '',
+        fecha_vencimiento: hemo.fecha_vencimiento ? getBoliviaDateTimeLocal(hemo.fecha_vencimiento) : '',
         devuelto: hemo.devuelto || false
       });
     } else {
       setEditingHemocomponente(null);
-      setFormData({
-        nro_bolsa: '',
-        nro_tubuladura: '',
-        tipo: '',
-        grupo_sanguineo: '',
-        estado: 'DISPONIBLE',
-        fecha_ingreso: new Date().toISOString().slice(0, 16),
-        fecha_vencimiento: '',
-        devuelto: false
-      });
+      setFormData(getInitialFormData());
     }
     setIsModalOpen(true);
+  };
+
+  const handleFechaIngresoChange = (value) => {
+    setFormData((prev) => ({
+      ...prev,
+      fecha_ingreso: value,
+      fecha_vencimiento: prev.fecha_vencimiento && prev.fecha_vencimiento <= value ? '' : prev.fecha_vencimiento
+    }));
   };
 
   const handleOpenDetails = async (hemo) => {
@@ -101,10 +151,16 @@ const HemocomponenteManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        fecha_ingreso: toBoliviaIsoDateTime(formData.fecha_ingreso),
+        fecha_vencimiento: toBoliviaIsoDateTime(formData.fecha_vencimiento)
+      };
+
       if (editingHemocomponente) {
-        await updateHemocomponente(editingHemocomponente.nro_bolsa, formData);
+        await updateHemocomponente(editingHemocomponente.nro_bolsa, payload);
       } else {
-        await createHemocomponente(formData);
+        await createHemocomponente(payload);
       }
       handleCloseModal();
       fetchData();
@@ -154,6 +210,8 @@ const HemocomponenteManagement = () => {
       default: return <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-bold border border-slate-200">{estado}</span>;
     }
   };
+
+  const nowBolivia = getBoliviaDateTimeLocal();
 
   return (
     <>
@@ -296,8 +354,11 @@ const HemocomponenteManagement = () => {
                     type="text" 
                     required
                     disabled={!!editingHemocomponente}
+                    maxLength={50}
+                    pattern="[A-Za-z0-9-]+"
+                    title="Solo se permiten letras, números y guiones"
                     value={formData.nro_bolsa}
-                    onChange={(e) => setFormData({...formData, nro_bolsa: e.target.value})}
+                    onChange={(e) => setFormData({...formData, nro_bolsa: e.target.value.toUpperCase()})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 uppercase"
                     placeholder="Ej: B-1002"
                   />
@@ -308,8 +369,11 @@ const HemocomponenteManagement = () => {
                   <input 
                     type="text" 
                     required
+                    maxLength={50}
+                    pattern="[A-Za-z0-9-]+"
+                    title="Solo se permiten letras, números y guiones"
                     value={formData.nro_tubuladura}
-                    onChange={(e) => setFormData({...formData, nro_tubuladura: e.target.value})}
+                    onChange={(e) => setFormData({...formData, nro_tubuladura: e.target.value.toUpperCase()})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none uppercase"
                     placeholder="Ej: TUB-45"
                   />
@@ -324,11 +388,9 @@ const HemocomponenteManagement = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none bg-white font-semibold"
                   >
                     <option value="">-- Seleccionar --</option>
-                    <option value="SANGRE_TOTAL">Sangre Total</option>
-                    <option value="GLOBULOS_ROJOS">Glóbulos Rojos</option>
-                    <option value="PLASMA">Plasma</option>
-                    <option value="PLAQUETAS">Plaquetas</option>
-                    <option value="CRIOPRECIPITADO">Crioprecipitado</option>
+                    {TIPOS_HEMOCOMPONENTE.map((tipo) => (
+                      <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -341,14 +403,9 @@ const HemocomponenteManagement = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none bg-white font-bold text-red-700"
                   >
                     <option value="" className="font-normal text-gray-900">-- Sel --</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
+                    {GRUPOS_SANGUINEOS.map((grupo) => (
+                      <option key={grupo} value={grupo}>{grupo}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -360,12 +417,9 @@ const HemocomponenteManagement = () => {
                     onChange={(e) => setFormData({...formData, estado: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none bg-white font-bold"
                   >
-                    <option value="DISPONIBLE">Disponible</option>
-                    <option value="RESERVADO">Reservado</option>
-                    <option value="DESPACHADO">Despachado</option>
-                    <option value="TRANSFUNDIDO">Transfundido</option>
-                    <option value="DESCARTADO">Descartado</option>
-                    <option value="VENCIDO">Vencido</option>
+                    {ESTADOS_HEMOCOMPONENTE.map((estado) => (
+                      <option key={estado.value} value={estado.value}>{estado.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -386,8 +440,9 @@ const HemocomponenteManagement = () => {
                   <input 
                     type="datetime-local" 
                     required
+                    max={nowBolivia}
                     value={formData.fecha_ingreso}
-                    onChange={(e) => setFormData({...formData, fecha_ingreso: e.target.value})}
+                    onChange={(e) => handleFechaIngresoChange(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none"
                   />
                 </div>
@@ -397,6 +452,7 @@ const HemocomponenteManagement = () => {
                   <input 
                     type="datetime-local" 
                     required
+                    min={formData.fecha_ingreso || undefined}
                     value={formData.fecha_vencimiento}
                     onChange={(e) => setFormData({...formData, fecha_vencimiento: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none"

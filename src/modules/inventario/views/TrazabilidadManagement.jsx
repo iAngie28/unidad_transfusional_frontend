@@ -4,6 +4,51 @@ import { getHemocomponentes } from '../services/hemocomponenteService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { ListTree, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+
+const EVENTOS_TRAZABILIDAD = [
+  { value: 'INGRESO', label: 'Ingreso' },
+  { value: 'FRACCIONAMIENTO', label: 'Fraccionamiento' },
+  { value: 'RESERVA', label: 'Reserva' },
+  { value: 'DESPACHO', label: 'Despacho' },
+  { value: 'DEVOLUCION', label: 'Devolución' },
+  { value: 'DESCARTE', label: 'Descarte' }
+];
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
+const getInitialTrazabilidadForm = (userId = '') => ({
+  nro_bolsa: '',
+  evento: 'INGRESO',
+  encargado: userId,
+  fecha_hora: getBoliviaDateTimeLocal()
+});
+
 const TrazabilidadManagement = () => {
   const { user } = useAuth();
   const [trazabilidades, setTrazabilidades] = useState([]);
@@ -13,12 +58,7 @@ const TrazabilidadManagement = () => {
   const [editingTrazabilidad, setEditingTrazabilidad] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro_bolsa: '',
-    evento: 'INGRESO',
-    encargado: user?.id || '',
-    fecha_hora: new Date().toISOString().slice(0, 16)
-  });
+  const [formData, setFormData] = useState(getInitialTrazabilidadForm(user?.id || ''));
 
   useEffect(() => {
     fetchData();
@@ -47,16 +87,11 @@ const TrazabilidadManagement = () => {
         nro_bolsa: trazabilidad.nro_bolsa || '',
         evento: trazabilidad.evento || 'INGRESO',
         encargado: trazabilidad.encargado || user?.id || '',
-        fecha_hora: trazabilidad.fecha_hora ? new Date(trazabilidad.fecha_hora).toISOString().slice(0, 16) : ''
+        fecha_hora: trazabilidad.fecha_hora ? getBoliviaDateTimeLocal(trazabilidad.fecha_hora) : ''
       });
     } else {
       setEditingTrazabilidad(null);
-      setFormData({
-        nro_bolsa: '',
-        evento: 'INGRESO',
-        encargado: user?.id || '',
-        fecha_hora: new Date().toISOString().slice(0, 16)
-      });
+      setFormData(getInitialTrazabilidadForm(user?.id || ''));
     }
     setIsModalOpen(true);
   };
@@ -69,10 +104,15 @@ const TrazabilidadManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        fecha_hora: toBoliviaIsoDateTime(formData.fecha_hora)
+      };
+
       if (editingTrazabilidad) {
-        await updateTrazabilidad(editingTrazabilidad.id, formData);
+        await updateTrazabilidad(editingTrazabilidad.id, payload);
       } else {
-        await createTrazabilidad(formData);
+        await createTrazabilidad(payload);
       }
       handleCloseModal();
       fetchData();
@@ -107,6 +147,12 @@ const TrazabilidadManagement = () => {
     (t.evento?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (t.encargado_username?.toLowerCase() || '').includes(search.toLowerCase())
   );
+
+  const selectedHemocomponente = hemocomponentes.find((h) => h.nro_bolsa === formData.nro_bolsa);
+  const minFechaHora = selectedHemocomponente?.fecha_ingreso
+    ? getBoliviaDateTimeLocal(selectedHemocomponente.fecha_ingreso)
+    : undefined;
+  const nowBolivia = getBoliviaDateTimeLocal();
 
   return (
     <>
@@ -241,7 +287,7 @@ const TrazabilidadManagement = () => {
                   >
                     <option value="">-- Seleccionar Bolsa --</option>
                     {hemocomponentes.map(h => (
-                      <option key={h.nro_bolsa} value={h.nro_bolsa}>{h.nro_bolsa} - {h.tipo.replace('_', ' ')}</option>
+                      <option key={h.nro_bolsa} value={h.nro_bolsa}>{h.nro_bolsa} - {h.tipo?.replace('_', ' ')}</option>
                     ))}
                   </select>
                 </div>
@@ -254,12 +300,9 @@ const TrazabilidadManagement = () => {
                     onChange={(e) => setFormData({...formData, evento: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none bg-white font-bold"
                   >
-                    <option value="INGRESO">Ingreso</option>
-                    <option value="FRACCIONAMIENTO">Fraccionamiento</option>
-                    <option value="RESERVA">Reserva</option>
-                    <option value="DESPACHO">Despacho</option>
-                    <option value="DEVOLUCION">Devolución</option>
-                    <option value="DESCARTE">Descarte</option>
+                    {EVENTOS_TRAZABILIDAD.map((evento) => (
+                      <option key={evento.value} value={evento.value}>{evento.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -268,6 +311,8 @@ const TrazabilidadManagement = () => {
                   <input 
                     type="datetime-local" 
                     required
+                    min={minFechaHora}
+                    max={nowBolivia}
                     value={formData.fecha_hora}
                     onChange={(e) => setFormData({...formData, fecha_hora: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"

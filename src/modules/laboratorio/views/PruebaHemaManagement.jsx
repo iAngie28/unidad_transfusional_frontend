@@ -4,6 +4,70 @@ import { getHemocomponentes } from '../../inventario/services/hemocomponenteServ
 import { getSolicitudes } from '../../admision/services/solicitudService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Microscope, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
+import SegmentedControl from '../../../components/common/SegmentedControl';
+
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+
+const REACTIVOS = [
+  { value: 'POSITIVO', label: 'POSITIVO' },
+  { value: 'NEGATIVO', label: 'NEGATIVO' }
+];
+const POSITIVO_NEGATIVO = [
+  { value: 'POSITIVO', label: 'POSITIVO' },
+  { value: 'NEGATIVO', label: 'NEGATIVO' }
+];
+const GRUPOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const REACTIVO_FIELDS = ['anti_a', 'anti_b', 'anti_ab', 'anti_d'];
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
+const getInitialPruebaHemaForm = (userId = '') => ({
+  fecha: getBoliviaDateTimeLocal(),
+  nro_bolsa: '',
+  user_id: userId,
+  nro_solicitud: '',
+  salina: 'NEGATIVO',
+  albumina: 'NEGATIVO',
+  liss: 'NEGATIVO',
+  coombs: 'NEGATIVO',
+  cruzada_mayor: 'NEGATIVO',
+  cruzada_menor: 'NEGATIVO',
+  hemolisis: 'NEGATIVO',
+  anti_a: 'NEGATIVO',
+  anti_b: 'NEGATIVO',
+  anti_ab: 'NEGATIVO',
+  anti_d: 'NEGATIVO',
+  celula_a: 'NEGATIVO',
+  celula_b: 'NEGATIVO',
+  celula_o: 'NEGATIVO',
+  fenotipo: ''
+});
 
 const PruebaHemaManagement = () => {
   const { user } = useAuth();
@@ -15,14 +79,7 @@ const PruebaHemaManagement = () => {
   const [editingPrueba, setEditingPrueba] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    fecha: new Date().toISOString().slice(0, 16),
-    nro_bolsa: '',
-    user_id: user?.id || '',
-    nro_solicitud: '',
-    salina: '', albumina: '', liss: '', coombs: '', cruzada_mayor: '', cruzada_menor: '', hemolisis: '',
-    anti_a: 'NO_REALIZADO', anti_b: 'NO_REALIZADO', anti_ab: 'NO_REALIZADO', anti_d: 'NO_REALIZADO', celula_a: '', celula_b: '', celula_o: '', fenotipo: ''
-  });
+  const [formData, setFormData] = useState(getInitialPruebaHemaForm(user?.id || ''));
 
   const [viewingPrueba, setViewingPrueba] = useState(null);
 
@@ -53,19 +110,12 @@ const PruebaHemaManagement = () => {
       setEditingPrueba(prueba);
       setFormData({
         ...prueba,
-        fecha: prueba.fecha ? new Date(prueba.fecha).toISOString().slice(0, 16) : '',
+        fecha: prueba.fecha ? getBoliviaDateTimeLocal(prueba.fecha) : '',
         user_id: prueba.user_id || user?.id || ''
       });
     } else {
       setEditingPrueba(null);
-      setFormData({
-        fecha: new Date().toISOString().slice(0, 16),
-        nro_bolsa: '',
-        user_id: user?.id || '',
-        nro_solicitud: '',
-        salina: '', albumina: '', liss: '', coombs: '', cruzada_mayor: '', cruzada_menor: '', hemolisis: '',
-        anti_a: 'NO_REALIZADO', anti_b: 'NO_REALIZADO', anti_ab: 'NO_REALIZADO', anti_d: 'NO_REALIZADO', celula_a: '', celula_b: '', celula_o: '', fenotipo: ''
-      });
+      setFormData(getInitialPruebaHemaForm(user?.id || ''));
     }
     setIsModalOpen(true);
   };
@@ -82,10 +132,14 @@ const PruebaHemaManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        fecha: toBoliviaIsoDateTime(formData.fecha)
+      };
       if (editingPrueba) {
-        await updatePruebaHema(editingPrueba.id, formData);
+        await updatePruebaHema(editingPrueba.id, payload);
       } else {
-        await createPruebaHema(formData);
+        await createPruebaHema(payload);
       }
       handleCloseModal();
       fetchData();
@@ -114,6 +168,10 @@ const PruebaHemaManagement = () => {
     (p.nro_bolsa?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (String(p.nro_solicitud).toLowerCase() || '').includes(search.toLowerCase())
   );
+
+  const selectedBolsa = bolsas.find((b) => b.nro_bolsa === formData.nro_bolsa);
+  const minFecha = selectedBolsa?.fecha_ingreso ? getBoliviaDateTimeLocal(selectedBolsa.fecha_ingreso) : undefined;
+  const nowBolivia = getBoliviaDateTimeLocal();
 
   return (
     <>
@@ -265,7 +323,7 @@ const PruebaHemaManagement = () => {
                   <label className="text-xs font-medium text-gray-700">N° Bolsa (Hemocomponente) *</label>
                   <select required value={formData.nro_bolsa} onChange={(e) => setFormData({...formData, nro_bolsa: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 font-mono">
                     <option value="">-- Seleccionar --</option>
-                    {bolsas.map(b => <option key={b.nro_bolsa} value={b.nro_bolsa}>{b.nro_bolsa} - {b.tipo}</option>)}
+                    {bolsas.map(b => <option key={b.nro_bolsa} value={b.nro_bolsa}>{b.nro_bolsa} - {b.tipo?.replace('_', ' ')}</option>)}
                   </select>
                 </div>
 
@@ -279,7 +337,7 @@ const PruebaHemaManagement = () => {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">Fecha y Hora *</label>
-                  <input type="datetime-local" required value={formData.fecha} onChange={(e) => setFormData({...formData, fecha: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
+                  <input type="datetime-local" required min={minFecha} max={nowBolivia} value={formData.fecha} onChange={(e) => setFormData({...formData, fecha: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
                 </div>
 
                 <div className="md:col-span-4 mt-2 pb-1 border-b border-gray-100">
@@ -287,28 +345,43 @@ const PruebaHemaManagement = () => {
                 </div>
                 {['salina', 'albumina', 'liss', 'coombs', 'cruzada_mayor', 'cruzada_menor', 'hemolisis'].map(field => (
                   <div key={field} className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-gray-600 capitalize">{field.replace('_', ' ')}</label>
-                    <input type="text" maxLength="50" value={formData[field]} onChange={(e) => setFormData({...formData, [field]: e.target.value})} className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
+                    <label className="text-[11px] font-medium text-gray-600 capitalize">{field.replace('_', ' ')} *</label>
+                    <SegmentedControl
+                      value={formData[field]}
+                      onChange={(val) => setFormData({...formData, [field]: val})}
+                    />
                   </div>
                 ))}
 
                 <div className="md:col-span-4 mt-2 pb-1 border-b border-gray-100">
                   <h3 className="text-xs font-bold text-pink-800 uppercase tracking-wider">Clasificación & Serología</h3>
                 </div>
-                {['anti_a', 'anti_b', 'anti_ab', 'anti_d'].map(field => (
+                {REACTIVO_FIELDS.map(field => (
                   <div key={field} className="space-y-1.5">
                     <label className="text-[11px] font-medium text-gray-600 capitalize">{field.replace('_', ' ')} *</label>
-                    <select required value={formData[field]} onChange={(e) => setFormData({...formData, [field]: e.target.value})} className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500">
-                      <option value="POSITIVO">POSITIVO</option>
-                      <option value="NEGATIVO">NEGATIVO</option>
-                      <option value="NO_REALIZADO">NO REALIZADO</option>
-                    </select>
+                    <SegmentedControl
+                      options={REACTIVOS}
+                      value={formData[field]}
+                      onChange={(val) => setFormData({...formData, [field]: val})}
+                    />
                   </div>
                 ))}
                 {['celula_a', 'celula_b', 'celula_o', 'fenotipo'].map(field => (
                   <div key={field} className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-gray-600 capitalize">{field.replace('_', ' ')}</label>
-                    <input type="text" maxLength="50" value={formData[field]} onChange={(e) => setFormData({...formData, [field]: e.target.value})} className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
+                    <label className="text-[11px] font-medium text-gray-600 capitalize">{field.replace('_', ' ')} *</label>
+                    {field === 'fenotipo' ? (
+                      <select required value={formData.fenotipo} onChange={(e) => setFormData({...formData, fenotipo: e.target.value})} className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 bg-white">
+                        <option value="">-- Seleccionar --</option>
+                        {GRUPOS.map((grupo) => (
+                          <option key={grupo} value={grupo}>{grupo}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <SegmentedControl
+                        value={formData[field]}
+                        onChange={(val) => setFormData({...formData, [field]: val})}
+                      />
+                    )}
                   </div>
                 ))}
 

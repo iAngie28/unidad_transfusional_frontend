@@ -13,7 +13,9 @@ import SolicitudManagement from './modules/admision/views/SolicitudManagement';
 import CitacionManagement from './modules/admision/views/CitacionManagement';
 import ConsentimientoManagement from './modules/admision/views/ConsentimientoManagement';
 import PagoManagement from './modules/admision/views/PagoManagement';
+import ServicioManagement from './modules/admision/views/ServicioManagement';
 import HemocomponenteManagement from './modules/inventario/views/HemocomponenteManagement';
+import HospitalManagement from './modules/inventario/views/HospitalManagement';
 import TrazabilidadManagement from './modules/inventario/views/TrazabilidadManagement';
 import DescarteManagement from './modules/inventario/views/DescarteManagement';
 import PruebaPacManagement from './modules/laboratorio/views/PruebaPacManagement';
@@ -64,9 +66,11 @@ function App() {
             <Route path="citaciones" element={<CitacionManagement />} />
             <Route path="consentimientos" element={<ConsentimientoManagement />} />
             <Route path="pagos" element={<PagoManagement />} />
+            <Route path="servicios" element={<ServicioManagement />} />
             
             {/* Módulo 3: Inventario */}
             <Route path="hemocomponentes" element={<HemocomponenteManagement />} />
+            <Route path="hospitales" element={<HospitalManagement />} />
             <Route path="trazabilidad" element={<TrazabilidadManagement />} />
             <Route path="descartes" element={<DescarteManagement />} />
             

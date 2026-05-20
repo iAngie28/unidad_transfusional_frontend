@@ -3,6 +3,41 @@ import { getReacciones, createReaccion, updateReaccion, deleteReaccion } from '.
 import { getTransfusiones } from '../services/transfusionService';
 import { AlertTriangle, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
 
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
+const getInitialReaccionForm = () => ({
+  id_transfusion: '',
+  descripcion: '',
+  fecha_hora: getBoliviaDateTimeLocal()
+});
+
 const ReaccionManagement = () => {
   const [reacciones, setReacciones] = useState([]);
   const [transfusiones, setTransfusiones] = useState([]);
@@ -11,11 +46,7 @@ const ReaccionManagement = () => {
   const [editingReaccion, setEditingReaccion] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    id_transfusion: '',
-    descripcion: '',
-    fecha_hora: new Date().toISOString().slice(0, 16)
-  });
+  const [formData, setFormData] = useState(getInitialReaccionForm());
 
   const [viewingReaccion, setViewingReaccion] = useState(null);
 
@@ -45,15 +76,11 @@ const ReaccionManagement = () => {
       setFormData({
         id_transfusion: reaccion.id_transfusion,
         descripcion: reaccion.descripcion,
-        fecha_hora: reaccion.fecha_hora ? new Date(reaccion.fecha_hora).toISOString().slice(0, 16) : ''
+        fecha_hora: reaccion.fecha_hora ? getBoliviaDateTimeLocal(reaccion.fecha_hora) : ''
       });
     } else {
       setEditingReaccion(null);
-      setFormData({
-        id_transfusion: '',
-        descripcion: '',
-        fecha_hora: new Date().toISOString().slice(0, 16)
-      });
+      setFormData(getInitialReaccionForm());
     }
     setIsModalOpen(true);
   };
@@ -70,16 +97,29 @@ const ReaccionManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        descripcion: formData.descripcion.trim(),
+        fecha_hora: toBoliviaIsoDateTime(formData.fecha_hora)
+      };
+
       if (editingReaccion) {
-        await updateReaccion(editingReaccion.id, formData);
+        await updateReaccion(editingReaccion.id, payload);
       } else {
-        await createReaccion(formData);
+        await createReaccion(payload);
       }
       handleCloseModal();
       fetchData();
     } catch (error) {
-      alert('Error al guardar. Ver consola.');
       console.error(error);
+      let errorMsg = 'Error al guardar la reaccion. Verifica los datos.';
+      if (error.response?.data) {
+        const errorList = Object.entries(error.response.data)
+          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+          .join('\n');
+        errorMsg += `\n\nDetalles:\n${errorList}`;
+      }
+      alert(errorMsg);
     }
   };
 
@@ -98,6 +138,13 @@ const ReaccionManagement = () => {
     (r.descripcion?.toLowerCase() || '').includes(search.toLowerCase()) ||
     String(r.id_transfusion).includes(search)
   );
+  const selectedTransfusion = transfusiones.find((t) => String(t.id) === String(formData.id_transfusion));
+  const minFechaHora = selectedTransfusion?.hora_inicio
+    ? getBoliviaDateTimeLocal(selectedTransfusion.hora_inicio)
+    : undefined;
+  const maxFechaHora = selectedTransfusion?.hora_fin
+    ? getBoliviaDateTimeLocal(selectedTransfusion.hora_fin)
+    : getBoliviaDateTimeLocal();
 
   return (
     <>
@@ -111,10 +158,13 @@ const ReaccionManagement = () => {
             <p className="text-gray-500 text-sm mt-1">Registro de incidentes o reacciones durante la transfusión</p>
           </div>
           <div className="flex items-center gap-3">
-            <input 
-              type="text" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-xl outline-none"
-            />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input 
+                type="text" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl outline-none"
+              />
+            </div>
             <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-xl">
               <Plus className="w-4 h-4" /> Registrar
             </button>
@@ -132,18 +182,32 @@ const ReaccionManagement = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
-              {filtered.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-bold">Transf. #{r.id_transfusion}</td>
-                  <td className="px-6 py-4 text-red-600 font-medium">{r.descripcion}</td>
-                  <td className="px-6 py-4">{new Date(r.fecha_hora).toLocaleString()}</td>
-                  <td className="px-6 py-4 flex justify-end gap-2">
-                    <button onClick={() => handleOpenView(r)} className="p-1.5 text-gray-400 hover:text-orange-500 bg-orange-50 rounded-lg" title="Ver Detalles"><Eye className="w-4 h-4" /></button>
-                    <button onClick={() => handleOpenModal(r)} className="p-1.5 text-gray-400 hover:text-orange-500 bg-orange-50 rounded-lg" title="Editar"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => handleDelete(r.id)} className="p-1.5 text-gray-400 hover:text-red-600 bg-red-50 rounded-lg" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
+              {loading ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-center text-gray-500">
+                    Cargando reacciones...
                   </td>
                 </tr>
-              ))}
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-center text-gray-500">
+                    No hay reacciones registradas.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 font-bold">Transf. #{r.id_transfusion}</td>
+                    <td className="px-6 py-4 text-red-600 font-medium">{r.descripcion}</td>
+                    <td className="px-6 py-4">{new Date(r.fecha_hora).toLocaleString()}</td>
+                    <td className="px-6 py-4 flex justify-end gap-2">
+                      <button onClick={() => handleOpenView(r)} className="p-1.5 text-gray-400 hover:text-orange-500 bg-orange-50 rounded-lg" title="Ver Detalles"><Eye className="w-4 h-4" /></button>
+                      <button onClick={() => handleOpenModal(r)} className="p-1.5 text-gray-400 hover:text-orange-500 bg-orange-50 rounded-lg" title="Editar"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDelete(r.id)} className="p-1.5 text-gray-400 hover:text-red-600 bg-red-50 rounded-lg" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -210,7 +274,15 @@ const ReaccionManagement = () => {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Fecha y Hora *</label>
-                  <input type="datetime-local" required value={formData.fecha_hora} onChange={(e) => setFormData({...formData, fecha_hora: e.target.value})} className="w-full p-2 border rounded-lg mt-1" />
+                  <input
+                    type="datetime-local"
+                    required
+                    min={minFechaHora}
+                    max={maxFechaHora}
+                    value={formData.fecha_hora}
+                    onChange={(e) => setFormData({...formData, fecha_hora: e.target.value})}
+                    className="w-full p-2 border rounded-lg mt-1"
+                  />
                 </div>
               </form>
             </div>

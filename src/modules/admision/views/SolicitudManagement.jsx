@@ -5,8 +5,65 @@ import { getMedicos } from '../services/medicoService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { FileText, Plus, Edit2, Trash2, Search, X, ActivitySquare, Clock } from 'lucide-react';
 
+const EDAD_UNIDADES = {
+  DIAS: 'días',
+  MESES: 'meses',
+  ANOS: 'años'
+};
+
+const getBoliviaNow = () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/La_Paz',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map(part => [part.type, part.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`
+  };
+};
+
+const getInitialSolicitudForm = (userId = '') => ({
+  nro: '',
+  fecha: getBoliviaNow().date,
+  hora: getBoliviaNow().time,
+  edad_valor: '',
+  edad_unidad: 'ANOS',
+  fecha_nacimiento: '',
+  hto: '',
+  hb: '',
+  grupo: '',
+  hemocomponente: '',
+  cantidad: '',
+  fraccionado: false,
+  ml: '',
+  tipo_urgencia: '',
+  diagnostico: '',
+  id_paciente: '',
+  id_medico: '',
+  id_user: userId
+});
+
+const formatEdad = (valor, unidad) => {
+  if (!valor) return 'Edad no definida';
+  return `${valor} ${EDAD_UNIDADES[unidad] || unidad || ''}`.trim();
+};
+
+const buildSolicitudPayload = (formData) => ({
+  ...formData,
+  cantidad: formData.fraccionado ? 1 : formData.cantidad,
+  ml: formData.fraccionado ? Number(formData.ml) : null,
+  fecha_nacimiento: formData.fecha_nacimiento || null
+});
+
 const SolicitudManagement = () => {
   const { user } = useAuth();
+  const boliviaNow = getBoliviaNow();
   const [solicitudes, setSolicitudes] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [medicos, setMedicos] = useState([]);
@@ -15,22 +72,7 @@ const SolicitudManagement = () => {
   const [editingSolicitud, setEditingSolicitud] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro: '',
-    fecha: new Date().toISOString().split('T')[0],
-    hora: new Date().toTimeString().split(' ')[0].substring(0, 5),
-    edad_paciente: '',
-    hto: '',
-    hb: '',
-    grupo: '',
-    hemocomponente: '',
-    cantidad: '',
-    tipo_urgencia: '',
-    diagnostico: '',
-    id_paciente: '',
-    id_medico: '',
-    id_user: user?.id || ''
-  });
+  const [formData, setFormData] = useState(getInitialSolicitudForm(user?.id || ''));
 
   useEffect(() => {
     fetchData();
@@ -61,12 +103,16 @@ const SolicitudManagement = () => {
         nro: solicitud.nro || '',
         fecha: solicitud.fecha || '',
         hora: solicitud.hora ? solicitud.hora.substring(0, 5) : '',
-        edad_paciente: solicitud.edad_paciente || '',
+        edad_valor: solicitud.edad_valor || '',
+        edad_unidad: solicitud.edad_unidad || 'ANOS',
+        fecha_nacimiento: solicitud.fecha_nacimiento || '',
         hto: solicitud.hto || '',
         hb: solicitud.hb || '',
         grupo: solicitud.grupo || '',
         hemocomponente: solicitud.hemocomponente || '',
         cantidad: solicitud.cantidad || '',
+        fraccionado: solicitud.fraccionado || false,
+        ml: solicitud.ml || '',
         tipo_urgencia: solicitud.tipo_urgencia || '',
         diagnostico: solicitud.diagnostico || '',
         id_paciente: solicitud.id_paciente || '',
@@ -75,22 +121,7 @@ const SolicitudManagement = () => {
       });
     } else {
       setEditingSolicitud(null);
-      setFormData({
-        nro: '',
-        fecha: new Date().toISOString().split('T')[0],
-        hora: new Date().toTimeString().split(' ')[0].substring(0, 5),
-        edad_paciente: '',
-        hto: '',
-        hb: '',
-        grupo: '',
-        hemocomponente: '',
-        cantidad: '',
-        tipo_urgencia: '',
-        diagnostico: '',
-        id_paciente: '',
-        id_medico: '',
-        id_user: user?.id || ''
-      });
+      setFormData(getInitialSolicitudForm(user?.id || ''));
     }
     setIsModalOpen(true);
   };
@@ -103,10 +134,11 @@ const SolicitudManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = buildSolicitudPayload(formData);
       if (editingSolicitud) {
-        await updateSolicitud(editingSolicitud.nro, formData);
+        await updateSolicitud(editingSolicitud.nro, payload);
       } else {
-        await createSolicitud(formData);
+        await createSolicitud(payload);
       }
       handleCloseModal();
       fetchData();
@@ -150,6 +182,8 @@ const SolicitudManagement = () => {
       default: return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold border border-blue-200">RUTINA</span>;
     }
   };
+
+  const maxHora = formData.fecha === boliviaNow.date ? boliviaNow.time : undefined;
 
   return (
     <>
@@ -222,11 +256,14 @@ const SolicitudManagement = () => {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-gray-900">{s.paciente_nombre}</div>
                         <div className="text-xs text-gray-500">Dr. {s.medico_nombre}</div>
+                        <div className="text-xs text-gray-400">{formatEdad(s.edad_valor, s.edad_unidad)}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           <span className="font-medium text-gray-800">{s.hemocomponente?.replace('_', ' ')}</span>
                           <span className="text-xs text-gray-500">{s.cantidad} unidad(es) • {s.grupo}</span>
+                          {s.fraccionado && <span className="text-xs font-semibold text-indigo-600">Fraccionada • {s.ml} ml</span>}
+                          <span className="text-xs text-gray-500">Hb {s.hb} g/dL • Hto {s.hto}%</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -305,6 +342,7 @@ const SolicitudManagement = () => {
                   <input 
                     type="date" 
                     required
+                    max={boliviaNow.date}
                     value={formData.fecha}
                     onChange={(e) => setFormData({...formData, fecha: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -315,6 +353,7 @@ const SolicitudManagement = () => {
                   <input 
                     type="time" 
                     required
+                    max={maxHora}
                     value={formData.hora}
                     onChange={(e) => setFormData({...formData, hora: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -335,7 +374,9 @@ const SolicitudManagement = () => {
                         ...formData, 
                         id_paciente: e.target.value,
                         // Autocompletar datos clínicos base
-                        edad_paciente: selectedPaciente?.edad || formData.edad_paciente,
+                        edad_valor: selectedPaciente?.edad_valor || formData.edad_valor,
+                        edad_unidad: selectedPaciente?.edad_unidad || formData.edad_unidad,
+                        fecha_nacimiento: selectedPaciente?.fecha_nacimiento || formData.fecha_nacimiento,
                         grupo: selectedPaciente?.grupo_sanguineo || formData.grupo
                       });
                     }}
@@ -375,23 +416,59 @@ const SolicitudManagement = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-semibold"
                   >
                     <option value="" className="font-normal">-- Seleccionar --</option>
-                    <option value="SANGRE_TOTAL">Sangre Total</option>
-                    <option value="GLOBULOS_ROJOS">Glóbulos Rojos</option>
-                    <option value="PLASMA">Plasma</option>
-                    <option value="PLAQUETAS">Plaquetas</option>
-                    <option value="CRIOPRECIPITADO">Crioprecipitado</option>
+                    <option value="PLASMA_FRESCO_CONGELADO">Plasma fresco congelado</option>
+                    <option value="CRIOPRECIPITADOS">Crioprecipitados</option>
+                    <option value="CONCENTRADO_PLAQUETAS">Concentrado de plaquetas</option>
+                    <option value="PAQUETE_GLOBULAR">Paquete globular</option>
+                    <option value="CONCENTRADO_HELITROCITO_PLAQUETAS">Concentrado de helitrocito y plaquetas por aféresis</option>
+                    <option value="GLOBULO_ROJO_LAVADO">Globulo rojo lavado</option>
                   </select>
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
                   <label className="text-sm font-medium text-gray-700">Cantidad (U) *</label>
                   <input 
                     type="number" 
-                    required min="1" max="20"
+                    required min="1" max="20" step="1" inputMode="numeric"
+                    disabled={formData.fraccionado}
                     value={formData.cantidad}
                     onChange={(e) => setFormData({...formData, cantidad: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-center disabled:bg-gray-100 disabled:text-gray-500"
                   />
                 </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700">Fraccionada</label>
+                  <label className="flex items-center gap-2 h-[42px] px-4 border border-gray-300 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.fraccionado}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        fraccionado: e.target.checked,
+                        cantidad: e.target.checked ? 1 : formData.cantidad,
+                        ml: e.target.checked ? formData.ml : ''
+                      })}
+                      className="w-4 h-4 text-indigo-600 rounded"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Sí</span>
+                  </label>
+                </div>
+                {formData.fraccionado && (
+                  <div className="space-y-1.5 md:col-span-2">
+                    <label className="text-sm font-medium text-gray-700">ML *</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="1000"
+                      step="1"
+                      inputMode="numeric"
+                      value={formData.ml}
+                      onChange={(e) => setFormData({...formData, ml: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                      placeholder="Ej: 250"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1.5 md:col-span-3">
                   <label className="text-sm font-medium text-gray-700">Urgencia *</label>
                   <select 
@@ -426,15 +503,36 @@ const SolicitudManagement = () => {
                   </select>
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-700">Edad (años) *</label>
+                  <label className="text-sm font-medium text-gray-700">Edad *</label>
                   <input 
                     type="number" 
-                    required min="0" max="150"
-                    value={formData.edad_paciente}
-                    onChange={(e) => setFormData({...formData, edad_paciente: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-center bg-gray-50"
-                    readOnly
-                    title="Se autocompleta con los datos del paciente"
+                    required min="1" step="1" inputMode="numeric"
+                    value={formData.edad_valor}
+                    onChange={(e) => setFormData({...formData, edad_valor: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-center"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700">Unidad *</label>
+                  <select
+                    required
+                    value={formData.edad_unidad}
+                    onChange={(e) => setFormData({...formData, edad_unidad: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  >
+                    <option value="DIAS">Días</option>
+                    <option value="MESES">Meses</option>
+                    <option value="ANOS">Años</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 md:col-span-3">
+                  <label className="text-sm font-medium text-gray-700">Fecha de nacimiento</label>
+                  <input
+                    type="date"
+                    max={boliviaNow.date}
+                    value={formData.fecha_nacimiento || ''}
+                    onChange={(e) => setFormData({...formData, fecha_nacimiento: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                 </div>
 
@@ -442,7 +540,7 @@ const SolicitudManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Hemoglobina (Hb) *</label>
                   <input 
                     type="number" 
-                    required step="0.1"
+                    required step="0.1" min="0" inputMode="decimal"
                     value={formData.hb}
                     onChange={(e) => setFormData({...formData, hb: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -450,15 +548,18 @@ const SolicitudManagement = () => {
                   />
                 </div>
                 <div className="space-y-1.5 md:col-span-3">
-                  <label className="text-sm font-medium text-gray-700">Hematocrito (Hto) *</label>
-                  <input 
-                    type="number" 
-                    required step="0.1"
-                    value={formData.hto}
-                    onChange={(e) => setFormData({...formData, hto: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder="%"
-                  />
+                  <label className="text-sm font-medium text-gray-700">Hematocrito (Hto %) *</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required step="0.1" min="0" max="99.9" inputMode="decimal"
+                      value={formData.hto}
+                      onChange={(e) => setFormData({...formData, hto: e.target.value})}
+                      className="w-full px-4 py-2 pr-9 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      placeholder="0.0"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">%</span>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5 md:col-span-12">

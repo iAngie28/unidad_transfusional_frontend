@@ -1,22 +1,65 @@
 import React, { useState, useEffect } from 'react';
 import { getDescartes, createDescarte, updateDescarte, deleteDescarte } from '../services/descarteService';
 import { getHemocomponentes } from '../services/hemocomponenteService';
+import { getHospitales } from '../services/hospitalService';
 import { Trash2, Plus, Edit2, Search, X, AlertTriangle } from 'lucide-react';
+
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+
+const TIPOS_ACCION = [
+  { value: 'DESCARTE', label: 'Descarte' },
+  { value: 'BAJA_FRACCIONAMIENTO', label: 'Baja por fraccionamiento' },
+  { value: 'INTERCAMBIO_HOSPITAL', label: 'Intercambiada con otro hospital' },
+  { value: 'DEVUELTA_BANCO', label: 'Devuelta al banco de sangre' }
+];
+
+const INTERCAMBIO_HOSPITAL = 'INTERCAMBIO_HOSPITAL';
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
+const getInitialDescarteForm = () => ({
+  nro_bolsa: '',
+  tipo_accion: 'DESCARTE',
+  motivo: '',
+  hospital: '',
+  fecha_hora: getBoliviaDateTimeLocal()
+});
 
 const DescarteManagement = () => {
   const [descartes, setDescartes] = useState([]);
   const [hemocomponentes, setHemocomponentes] = useState([]);
+  const [hospitales, setHospitales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDescarte, setEditingDescarte] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro_bolsa: '',
-    tipo_accion: 'DESCARTE',
-    motivo: '',
-    fecha_hora: new Date().toISOString().slice(0, 16)
-  });
+  const [formData, setFormData] = useState(getInitialDescarteForm());
 
   useEffect(() => {
     fetchData();
@@ -25,12 +68,14 @@ const DescarteManagement = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [descartesData, hemocomponentesData] = await Promise.all([
+      const [descartesData, hemocomponentesData, hospitalesData] = await Promise.all([
         getDescartes(),
-        getHemocomponentes()
+        getHemocomponentes(),
+        getHospitales()
       ]);
       setDescartes(descartesData.results || descartesData || []);
       setHemocomponentes(hemocomponentesData.results || hemocomponentesData || []);
+      setHospitales(hospitalesData.results || hospitalesData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -45,16 +90,12 @@ const DescarteManagement = () => {
         nro_bolsa: descarte.nro_bolsa || '',
         tipo_accion: descarte.tipo_accion || 'DESCARTE',
         motivo: descarte.motivo || '',
-        fecha_hora: descarte.fecha_hora ? new Date(descarte.fecha_hora).toISOString().slice(0, 16) : ''
+        hospital: descarte.hospital || '',
+        fecha_hora: descarte.fecha_hora ? getBoliviaDateTimeLocal(descarte.fecha_hora) : ''
       });
     } else {
       setEditingDescarte(null);
-      setFormData({
-        nro_bolsa: '',
-        tipo_accion: 'DESCARTE',
-        motivo: '',
-        fecha_hora: new Date().toISOString().slice(0, 16)
-      });
+      setFormData(getInitialDescarteForm());
     }
     setIsModalOpen(true);
   };
@@ -67,10 +108,17 @@ const DescarteManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        motivo: formData.motivo.trim() || null,
+        hospital: formData.tipo_accion === INTERCAMBIO_HOSPITAL ? formData.hospital : null,
+        fecha_hora: toBoliviaIsoDateTime(formData.fecha_hora)
+      };
+
       if (editingDescarte) {
-        await updateDescarte(editingDescarte.id, formData);
+        await updateDescarte(editingDescarte.id, payload);
       } else {
-        await createDescarte(formData);
+        await createDescarte(payload);
       }
       handleCloseModal();
       fetchData();
@@ -102,8 +150,16 @@ const DescarteManagement = () => {
 
   const filteredDescartes = descartes.filter(d => 
     (d.nro_bolsa?.toLowerCase() || '').includes(search.toLowerCase()) ||
-    (d.tipo_accion?.toLowerCase() || '').includes(search.toLowerCase())
+    (d.tipo_accion?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (d.hospital_nombre?.toLowerCase() || '').includes(search.toLowerCase())
   );
+
+  const selectedHemocomponente = hemocomponentes.find((h) => h.nro_bolsa === formData.nro_bolsa);
+  const isIntercambioHospital = formData.tipo_accion === INTERCAMBIO_HOSPITAL;
+  const minFechaHora = selectedHemocomponente?.fecha_ingreso
+    ? getBoliviaDateTimeLocal(selectedHemocomponente.fecha_ingreso)
+    : undefined;
+  const nowBolivia = getBoliviaDateTimeLocal();
 
   return (
     <>
@@ -144,6 +200,7 @@ const DescarteManagement = () => {
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-sm font-medium text-gray-500">
                   <th className="px-6 py-4">Bolsa / Unidad</th>
                   <th className="px-6 py-4">Acción</th>
+                  <th className="px-6 py-4">Hospital</th>
                   <th className="px-6 py-4">Motivo</th>
                   <th className="px-6 py-4">Fecha y Hora</th>
                   <th className="px-6 py-4 text-right">Controles</th>
@@ -152,7 +209,7 @@ const DescarteManagement = () => {
               <tbody className="divide-y divide-gray-100 text-sm">
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
                       <div className="flex flex-col items-center justify-center">
                         <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-2"></div>
                         Cargando descartes...
@@ -161,7 +218,7 @@ const DescarteManagement = () => {
                   </tr>
                 ) : filteredDescartes.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
                       No hay registros de descarte.
                     </td>
                   </tr>
@@ -173,15 +230,19 @@ const DescarteManagement = () => {
                       </td>
                       <td className="px-6 py-4">
                         <span className={`font-semibold px-2 py-1 rounded-lg border text-xs ${
-                          d.tipo_accion === 'VENCIMIENTO' ? 'bg-red-50 text-red-700 border-red-200' : 
-                          d.tipo_accion === 'BAJA' ? 'bg-gray-100 text-gray-700 border-gray-200' :
+                          d.tipo_accion === 'INTERCAMBIO_HOSPITAL' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                          d.tipo_accion === 'DEVUELTA_BANCO' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          d.tipo_accion === 'BAJA_FRACCIONAMIENTO' ? 'bg-gray-100 text-gray-700 border-gray-200' :
                           'bg-amber-50 text-amber-700 border-amber-200'
                         }`}>
-                          {d.tipo_accion}
+                          {TIPOS_ACCION.find((tipo) => tipo.value === d.tipo_accion)?.label || d.tipo_accion}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-gray-700 max-w-xs truncate" title={d.motivo}>{d.motivo}</div>
+                        <div className="text-gray-700">{d.hospital_nombre || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-gray-700 max-w-xs truncate" title={d.motivo || ''}>{d.motivo || '-'}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-gray-600">{new Date(d.fecha_hora).toLocaleString()}</div>
@@ -253,19 +314,40 @@ const DescarteManagement = () => {
                   <select 
                     required
                     value={formData.tipo_accion}
-                    onChange={(e) => setFormData({...formData, tipo_accion: e.target.value})}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      tipo_accion: e.target.value,
+                      hospital: e.target.value === INTERCAMBIO_HOSPITAL ? formData.hospital : ''
+                    })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white font-bold"
                   >
-                    <option value="DESCARTE">Descarte</option>
-                    <option value="BAJA">Baja</option>
-                    <option value="VENCIMIENTO">Vencimiento</option>
+                    {TIPOS_ACCION.map((tipo) => (
+                      <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
+                    ))}
                   </select>
                 </div>
 
+                {isIntercambioHospital && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700">Hospital destino *</label>
+                    <select
+                      required
+                      value={formData.hospital}
+                      onChange={(e) => setFormData({...formData, hospital: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white"
+                    >
+                      <option value="">-- Seleccionar Hospital --</option>
+                      {hospitales.map((hospital) => (
+                        <option key={hospital.id} value={hospital.id}>{hospital.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Motivo Detallado *</label>
+                  <label className="text-sm font-medium text-gray-700">Motivo Detallado</label>
                   <textarea 
-                    required rows="3"
+                    rows="3"
                     value={formData.motivo}
                     onChange={(e) => setFormData({...formData, motivo: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none resize-none"
@@ -278,6 +360,8 @@ const DescarteManagement = () => {
                   <input 
                     type="datetime-local" 
                     required
+                    min={minFechaHora}
+                    max={nowBolivia}
                     value={formData.fecha_hora}
                     onChange={(e) => setFormData({...formData, fecha_hora: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none"

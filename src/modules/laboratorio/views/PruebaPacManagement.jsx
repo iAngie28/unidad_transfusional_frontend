@@ -4,6 +4,66 @@ import { getPacientes } from '../../admision/services/pacienteService';
 import { getSolicitudes } from '../../admision/services/solicitudService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { FlaskConical, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
+import SegmentedControl from '../../../components/common/SegmentedControl';
+
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+
+const REACTIVOS = [
+  { value: 'POSITIVO', label: 'POSITIVO' },
+  { value: 'NEGATIVO', label: 'NEGATIVO' }
+];
+const POSITIVO_NEGATIVO = [
+  { value: 'POSITIVO', label: 'POSITIVO' },
+  { value: 'NEGATIVO', label: 'NEGATIVO' }
+];
+const GRUPOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
+const getInitialPruebaPacForm = (userId = '') => ({
+  fecha_hora: getBoliviaDateTimeLocal(),
+  paciente_id: '',
+  user_id: userId,
+  nro_solicitud: '',
+  anti_a: 'NEGATIVO',
+  anti_b: 'NEGATIVO',
+  anti_ab: 'NEGATIVO',
+  anti_d: 'NEGATIVO',
+  control_rhesus: 'NEGATIVO',
+  alfa: 'NEGATIVO',
+  beta: 'NEGATIVO',
+  o: 'NEGATIVO',
+  fenotipo: '',
+  hto: '',
+  hb: '',
+  coombs_directo: 'NEGATIVO',
+  resultado: 'PENDIENTE'
+});
 
 const PruebaPacManagement = () => {
   const { user } = useAuth();
@@ -15,25 +75,7 @@ const PruebaPacManagement = () => {
   const [editingPrueba, setEditingPrueba] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    fecha_hora: new Date().toISOString().slice(0, 16),
-    paciente_id: '',
-    user_id: user?.id || '',
-    nro_solicitud: '',
-    anti_a: 'NO_REALIZADO',
-    anti_b: 'NO_REALIZADO',
-    anti_ab: 'NO_REALIZADO',
-    anti_d: 'NO_REALIZADO',
-    control_rhesus: '',
-    alfa: '',
-    beta: '',
-    o: '',
-    fenotipo: '',
-    hto: '',
-    hb: '',
-    coombs_directo: '',
-    resultado: 'PENDIENTE'
-  });
+  const [formData, setFormData] = useState(getInitialPruebaPacForm(user?.id || ''));
 
   const [viewingPrueba, setViewingPrueba] = useState(null);
 
@@ -64,20 +106,12 @@ const PruebaPacManagement = () => {
       setEditingPrueba(prueba);
       setFormData({
         ...prueba,
-        fecha_hora: prueba.fecha_hora ? new Date(prueba.fecha_hora).toISOString().slice(0, 16) : '',
+        fecha_hora: prueba.fecha_hora ? getBoliviaDateTimeLocal(prueba.fecha_hora) : '',
         user_id: prueba.user_id || user?.id || ''
       });
     } else {
       setEditingPrueba(null);
-      setFormData({
-        fecha_hora: new Date().toISOString().slice(0, 16),
-        paciente_id: '',
-        user_id: user?.id || '',
-        nro_solicitud: '',
-        anti_a: 'NO_REALIZADO', anti_b: 'NO_REALIZADO', anti_ab: 'NO_REALIZADO', anti_d: 'NO_REALIZADO', control_rhesus: '',
-        alfa: '', beta: '', o: '', fenotipo: '', hto: '', hb: '', coombs_directo: '',
-        resultado: 'PENDIENTE'
-      });
+      setFormData(getInitialPruebaPacForm(user?.id || ''));
     }
     setIsModalOpen(true);
   };
@@ -94,10 +128,16 @@ const PruebaPacManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        fecha_hora: toBoliviaIsoDateTime(formData.fecha_hora),
+        resultado: formData.resultado.trim()
+      };
+
       if (editingPrueba) {
-        await updatePruebaPac(editingPrueba.id, formData);
+        await updatePruebaPac(editingPrueba.id, payload);
       } else {
-        await createPruebaPac(formData);
+        await createPruebaPac(payload);
       }
       handleCloseModal();
       fetchData();
@@ -131,6 +171,11 @@ const PruebaPacManagement = () => {
     (p.paciente_id?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (String(p.nro_solicitud).toLowerCase() || '').includes(search.toLowerCase())
   );
+
+  const solicitudesPaciente = solicitudes.filter((s) => (
+    !formData.paciente_id || String(s.id_paciente) === String(formData.paciente_id)
+  ));
+  const nowBolivia = getBoliviaDateTimeLocal();
 
   return (
     <>
@@ -267,7 +312,7 @@ const PruebaPacManagement = () => {
                 <div className="col-span-2 md:col-span-4 mt-2">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Valores Clínicos</h3>
                   <div className="grid grid-cols-3 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <div><p className="text-xs text-gray-500">HTO</p><p className="font-bold text-gray-900">{viewingPrueba.hto}</p></div>
+                    <div><p className="text-xs text-gray-500">HTO</p><p className="font-bold text-gray-900">{viewingPrueba.hto}%</p></div>
                     <div><p className="text-xs text-gray-500">HB</p><p className="font-bold text-gray-900">{viewingPrueba.hb}</p></div>
                     <div><p className="text-xs text-gray-500">Coombs Directo</p><p className="font-bold text-gray-900">{viewingPrueba.coombs_directo || '-'}</p></div>
                   </div>
@@ -305,7 +350,7 @@ const PruebaPacManagement = () => {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">Paciente *</label>
-                  <select required value={formData.paciente_id} onChange={(e) => setFormData({...formData, paciente_id: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+                  <select required value={formData.paciente_id} onChange={(e) => setFormData({...formData, paciente_id: e.target.value, nro_solicitud: ''})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
                     <option value="">-- Seleccionar --</option>
                     {pacientes.map(p => <option key={p.ci} value={p.ci}>{p.ci} - {p.nombre} {p.apellido_paterno}</option>)}
                   </select>
@@ -315,13 +360,13 @@ const PruebaPacManagement = () => {
                   <label className="text-xs font-medium text-gray-700">Solicitud Asociada *</label>
                   <select required value={formData.nro_solicitud} onChange={(e) => setFormData({...formData, nro_solicitud: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
                     <option value="">-- Seleccionar --</option>
-                    {solicitudes.map(s => <option key={s.nro} value={s.nro}>Sol #{s.nro} - {s.paciente_nombre}</option>)}
+                    {solicitudesPaciente.map(s => <option key={s.nro} value={s.nro}>Sol #{s.nro} - {s.paciente_nombre}</option>)}
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">Fecha y Hora *</label>
-                  <input type="datetime-local" required value={formData.fecha_hora} onChange={(e) => setFormData({...formData, fecha_hora: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="datetime-local" required max={nowBolivia} value={formData.fecha_hora} onChange={(e) => setFormData({...formData, fecha_hora: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
                 </div>
 
                 {/* Reactivos */}
@@ -332,20 +377,33 @@ const PruebaPacManagement = () => {
                 {['anti_a', 'anti_b', 'anti_ab', 'anti_d'].map(field => (
                   <div key={field} className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700 capitalize">{field.replace('_', ' ')} *</label>
-                    <select required value={formData[field]} onChange={(e) => setFormData({...formData, [field]: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none font-medium">
-                      <option value="POSITIVO">POSITIVO</option>
-                      <option value="NEGATIVO">NEGATIVO</option>
-                      <option value="NO_REALIZADO">NO REALIZADO</option>
-                    </select>
+                    <SegmentedControl
+                      options={REACTIVOS}
+                      value={formData[field]}
+                      onChange={(val) => setFormData({...formData, [field]: val})}
+                    />
                   </div>
                 ))}
                 
-                {['control_rhesus', 'alfa', 'beta', 'o', 'fenotipo'].map(field => (
+                {['control_rhesus', 'alfa', 'beta', 'o'].map(field => (
                   <div key={field} className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700 capitalize">{field.replace('_', ' ')}</label>
-                    <input type="text" maxLength="50" value={formData[field]} onChange={(e) => setFormData({...formData, [field]: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                    <label className="text-xs font-medium text-gray-700 capitalize">{field.replace('_', ' ')} *</label>
+                    <SegmentedControl
+                      value={formData[field]}
+                      onChange={(val) => setFormData({...formData, [field]: val})}
+                    />
                   </div>
                 ))}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-700">Fenotipo *</label>
+                  <select required value={formData.fenotipo} onChange={(e) => setFormData({...formData, fenotipo: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white">
+                    <option value="">-- Seleccionar --</option>
+                    {GRUPOS.map((grupo) => (
+                      <option key={grupo} value={grupo}>{grupo}</option>
+                    ))}
+                  </select>
+                </div>
 
                 {/* Otros Valores */}
                 <div className="md:col-span-3 pb-2 mt-4 border-b border-gray-100">
@@ -353,25 +411,24 @@ const PruebaPacManagement = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-gray-700">HTO (Número) *</label>
-                  <input type="number" step="0.01" required value={formData.hto} onChange={(e) => setFormData({...formData, hto: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <label className="text-xs font-medium text-gray-700">HTO (%) *</label>
+                  <input type="number" step="0.01" min="0" max="99.99" required value={formData.hto} onChange={(e) => setFormData({...formData, hto: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">HB (Número) *</label>
-                  <input type="number" step="0.01" required value={formData.hb} onChange={(e) => setFormData({...formData, hb: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="number" step="0.01" min="0" required value={formData.hb} onChange={(e) => setFormData({...formData, hb: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-gray-700">Coombs Directo</label>
-                  <input type="text" maxLength="50" value={formData.coombs_directo} onChange={(e) => setFormData({...formData, coombs_directo: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <label className="text-xs font-medium text-gray-700">Coombs Directo *</label>
+                  <SegmentedControl
+                    value={formData.coombs_directo}
+                    onChange={(val) => setFormData({...formData, coombs_directo: val})}
+                  />
                 </div>
 
                 <div className="space-y-1.5 md:col-span-3 bg-purple-50 p-4 rounded-xl border border-purple-100 mt-2">
                   <label className="text-sm font-bold text-purple-900">Resultado Final *</label>
-                  <select required value={formData.resultado} onChange={(e) => setFormData({...formData, resultado: e.target.value})} className="w-full mt-2 px-4 py-2 border border-purple-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none font-bold text-gray-900 bg-white shadow-sm">
-                    <option value="APTO">APTO</option>
-                    <option value="NO_APTO">NO APTO</option>
-                    <option value="PENDIENTE">PENDIENTE</option>
-                  </select>
+                  <input type="text" required maxLength="100" pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9/ ]+" title="Solo se permiten letras, números, espacios y /" value={formData.resultado} onChange={(e) => setFormData({...formData, resultado: e.target.value.toUpperCase()})} className="w-full mt-2 px-4 py-2 border border-purple-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none font-bold text-gray-900 bg-white shadow-sm" />
                 </div>
 
               </form>

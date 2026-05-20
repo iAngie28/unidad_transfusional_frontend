@@ -2,31 +2,65 @@ import React, { useState, useEffect } from 'react';
 import { getTransfusiones, createTransfusion, updateTransfusion, deleteTransfusion } from '../services/transfusionService';
 import { getHemocomponentes } from '../../inventario/services/hemocomponenteService';
 import { getPacientes } from '../../admision/services/pacienteService';
+import { getServicios } from '../../admision/services/servicioService';
 import { useAuth } from '../../../contexts/AuthContext';
-import { ActivitySquare, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
+import { ActivitySquare, Plus, Edit2, Trash2, X, Eye } from 'lucide-react';
+
+const BOLIVIA_TIME_ZONE = 'America/La_Paz';
+const GRUPOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+const getBoliviaDateTimeLocal = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const toBoliviaIsoDateTime = (value) => {
+  if (!value) return value;
+  const valueWithSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${valueWithSeconds}-04:00`;
+};
+
+const getInitialTransfusionForm = (userId = '') => ({
+  nro_bolsa: '',
+  ci_paciente: '',
+  user_id: userId,
+  id_servicio: '',
+  diagnostico: '',
+  ate_trans_alerg: false,
+  grupo_cabecera_h: '',
+  hora_inicio: getBoliviaDateTimeLocal(),
+  hora_fin: '',
+  fraccionado: false,
+  ml: 1000
+});
 
 const TransfusionManagement = () => {
   const { user } = useAuth();
   const [transfusiones, setTransfusiones] = useState([]);
   const [bolsas, setBolsas] = useState([]);
   const [pacientes, setPacientes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [servicios, setServicios] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransfusion, setEditingTransfusion] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro_bolsa: '',
-    ci_paciente: '',
-    user_id: user?.id || '',
-    servicio: '',
-    diagnostico: '',
-    ate_trans_alerg: false,
-    grupo_cabecera_h: '',
-    hora_inicio: new Date().toISOString().slice(0, 16),
-    hora_fin: '',
-    fraccionado: false
-  });
+  const [formData, setFormData] = useState(getInitialTransfusionForm(user?.id || ''));
 
   const [viewingTransfusion, setViewingTransfusion] = useState(null);
 
@@ -35,20 +69,19 @@ const TransfusionManagement = () => {
   }, []);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
-      const [transData, bolsasData, pacData] = await Promise.all([
+      const [transData, bolsasData, pacData, serviciosData] = await Promise.all([
         getTransfusiones(),
         getHemocomponentes(),
-        getPacientes()
+        getPacientes(),
+        getServicios()
       ]);
       setTransfusiones(transData.results || transData || []);
       setBolsas(bolsasData.results || bolsasData || []);
       setPacientes(pacData.results || pacData || []);
+      setServicios(serviciosData.results || serviciosData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -57,17 +90,15 @@ const TransfusionManagement = () => {
       setEditingTransfusion(trans);
       setFormData({
         ...trans,
-        hora_inicio: trans.hora_inicio ? new Date(trans.hora_inicio).toISOString().slice(0, 16) : '',
-        hora_fin: trans.hora_fin ? new Date(trans.hora_fin).toISOString().slice(0, 16) : '',
+        hora_inicio: trans.hora_inicio ? getBoliviaDateTimeLocal(trans.hora_inicio) : '',
+        hora_fin: trans.hora_fin ? getBoliviaDateTimeLocal(trans.hora_fin) : '',
+        id_servicio: trans.id_servicio || '',
+        ml: trans.ml || 1000,
         user_id: trans.user_id || user?.id || ''
       });
     } else {
       setEditingTransfusion(null);
-      setFormData({
-        nro_bolsa: '', ci_paciente: '', user_id: user?.id || '',
-        servicio: '', diagnostico: '', ate_trans_alerg: false, grupo_cabecera_h: '',
-        hora_inicio: new Date().toISOString().slice(0, 16), hora_fin: '', fraccionado: false
-      });
+      setFormData(getInitialTransfusionForm(user?.id || ''));
     }
     setIsModalOpen(true);
   };
@@ -84,8 +115,13 @@ const TransfusionManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Create a copy of formData and remove hora_fin if it's empty
-      const payload = { ...formData };
+      const payload = {
+        ...formData,
+        diagnostico: formData.diagnostico.trim(),
+        hora_inicio: toBoliviaIsoDateTime(formData.hora_inicio),
+        hora_fin: formData.hora_fin ? toBoliviaIsoDateTime(formData.hora_fin) : null,
+        ml: formData.fraccionado ? Number(formData.ml) : 1000
+      };
       if (!payload.hora_fin) {
         payload.hora_fin = null;
       }
@@ -122,6 +158,14 @@ const TransfusionManagement = () => {
     (t.nro_bolsa?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (t.paciente_nombre?.toLowerCase() || '').includes(search.toLowerCase())
   );
+
+  const selectedBolsa = bolsas.find((b) => b.nro_bolsa === formData.nro_bolsa);
+  const usadoEnBolsa = transfusiones
+    .filter((t) => t.nro_bolsa === formData.nro_bolsa && t.id !== editingTransfusion?.id)
+    .reduce((total, t) => total + Number(t.ml || 0), 0);
+  const mlDisponible = Math.max(0, 1000 - usadoEnBolsa);
+  const nowBolivia = getBoliviaDateTimeLocal();
+  const minHoraInicio = selectedBolsa?.fecha_ingreso ? getBoliviaDateTimeLocal(selectedBolsa.fecha_ingreso) : undefined;
 
   const formatDateTime = (isoString) => {
     if (!isoString) return '-';
@@ -169,11 +213,12 @@ const TransfusionManagement = () => {
                 <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-mono font-bold">{t.nro_bolsa}</td>
                   <td className="px-6 py-4 font-semibold text-indigo-700">{t.paciente_nombre}</td>
-                  <td className="px-6 py-4">{t.servicio}</td>
+                  <td className="px-6 py-4">{t.servicio_nombre}</td>
                   <td className="px-6 py-4 text-gray-600">
                     <div className="flex flex-col text-xs font-medium">
                       <span><span className="text-green-600">Inicio:</span> {formatDateTime(t.hora_inicio)}</span>
                       <span><span className="text-red-500">Fin:</span> {formatDateTime(t.hora_fin)}</span>
+                      <span><span className="text-blue-600">ML:</span> {t.ml}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 flex justify-end gap-2">
@@ -208,8 +253,9 @@ const TransfusionManagement = () => {
                   <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
                     <div><p className="text-xs text-gray-500">Paciente</p><p className="font-bold text-gray-900">{viewingTransfusion.paciente_nombre} ({viewingTransfusion.ci_paciente})</p></div>
                     <div><p className="text-xs text-gray-500">Bolsa</p><p className="font-bold text-gray-900">{viewingTransfusion.nro_bolsa}</p></div>
-                    <div><p className="text-xs text-gray-500">Servicio/Cama</p><p className="font-bold text-gray-900">{viewingTransfusion.servicio}</p></div>
+                    <div><p className="text-xs text-gray-500">Servicio</p><p className="font-bold text-gray-900">{viewingTransfusion.servicio_nombre}</p></div>
                     <div><p className="text-xs text-gray-500">Grupo Cabecera</p><p className="font-bold text-gray-900">{viewingTransfusion.grupo_cabecera_h}</p></div>
+                    <div><p className="text-xs text-gray-500">ML</p><p className="font-bold text-gray-900">{viewingTransfusion.ml}</p></div>
                     <div className="col-span-2"><p className="text-xs text-gray-500">Diagnóstico</p><p className="font-bold text-gray-900">{viewingTransfusion.diagnostico}</p></div>
                   </div>
                 </div>
@@ -270,13 +316,19 @@ const TransfusionManagement = () => {
                 </div>
                 
                 <div>
-                  <label className="text-xs font-medium text-gray-700">Servicio / Cama *</label>
-                  <input type="text" required maxLength="120" value={formData.servicio} onChange={(e) => setFormData({...formData, servicio: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: Terapia Intensiva, Cama 4" />
+                  <label className="text-xs font-medium text-gray-700">Servicio *</label>
+                  <select required value={formData.id_servicio} onChange={(e) => setFormData({...formData, id_servicio: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="">-- Seleccionar --</option>
+                    {servicios.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
                 </div>
                 
                 <div>
                   <label className="text-xs font-medium text-gray-700">Grupo Cabecera *</label>
-                  <input type="text" required maxLength="20" value={formData.grupo_cabecera_h} onChange={(e) => setFormData({...formData, grupo_cabecera_h: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ej: O+" />
+                  <select required value={formData.grupo_cabecera_h} onChange={(e) => setFormData({...formData, grupo_cabecera_h: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="">-- Seleccionar --</option>
+                    {GRUPOS.map(grupo => <option key={grupo} value={grupo}>{grupo}</option>)}
+                  </select>
                 </div>
 
                 <div className="col-span-2">
@@ -286,12 +338,18 @@ const TransfusionManagement = () => {
                 
                 <div>
                   <label className="text-xs font-medium text-gray-700">Hora Inicio *</label>
-                  <input type="datetime-local" required value={formData.hora_inicio} onChange={(e) => setFormData({...formData, hora_inicio: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="datetime-local" required min={minHoraInicio} max={nowBolivia} value={formData.hora_inicio} onChange={(e) => setFormData({...formData, hora_inicio: e.target.value, hora_fin: formData.hora_fin && formData.hora_fin < e.target.value ? '' : formData.hora_fin})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 
                 <div>
                   <label className="text-xs font-medium text-gray-700">Hora Fin</label>
-                  <input type="datetime-local" value={formData.hora_fin} onChange={(e) => setFormData({...formData, hora_fin: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="datetime-local" min={formData.hora_inicio || undefined} max={nowBolivia} value={formData.hora_fin} onChange={(e) => setFormData({...formData, hora_fin: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-gray-700">ML *</label>
+                  <input type="number" required min="1" max={formData.fraccionado ? mlDisponible || 1 : 1000} disabled={!formData.fraccionado} value={formData.ml} onChange={(e) => setFormData({...formData, ml: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500" />
+                  <p className="text-xs text-gray-500 mt-1">Disponible para esta bolsa: {mlDisponible} ml.</p>
                 </div>
                 
                 <div className="col-span-2 flex flex-col gap-2 mt-2 bg-gray-50 p-4 rounded-xl border border-gray-100">
@@ -300,7 +358,7 @@ const TransfusionManagement = () => {
                     <span className="text-sm font-medium text-gray-700">Antecedentes Transfusionales / Alergias</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={formData.fraccionado} onChange={(e) => setFormData({...formData, fraccionado: e.target.checked})} className="w-4 h-4 text-blue-600 rounded" />
+                    <input type="checkbox" checked={formData.fraccionado} onChange={(e) => setFormData({...formData, fraccionado: e.target.checked, ml: e.target.checked ? Math.min(Number(formData.ml || 1000), mlDisponible || 1000) : 1000})} className="w-4 h-4 text-blue-600 rounded" />
                     <span className="text-sm font-medium text-gray-700">Hemocomponente Fraccionado (Uso pediátrico)</span>
                   </label>
                 </div>

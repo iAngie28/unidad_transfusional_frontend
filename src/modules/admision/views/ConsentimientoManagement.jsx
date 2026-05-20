@@ -1,26 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { getConsentimientos, createConsentimiento, updateConsentimiento, deleteConsentimiento } from '../services/consentimientoService';
 import { getSolicitudes } from '../services/solicitudService';
+import { getServicios } from '../services/servicioService';
 import { FileCheck, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+
+const getBoliviaToday = () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/La_Paz',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const initialConsentimientoForm = () => ({
+  nro_solicitud: '',
+  fecha: getBoliviaToday(),
+  id_servicio: '',
+  nombre_familiar: '',
+  apellido_paterno_familiar: '',
+  apellido_materno_familiar: '',
+  telefono: '',
+  ci: ''
+});
 
 const ConsentimientoManagement = () => {
   const [consentimientos, setConsentimientos] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
+  const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConsentimiento, setEditingConsentimiento] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    nro_solicitud: '',
-    fecha: new Date().toISOString().split('T')[0],
-    servicio: '',
-    nombre_familiar: '',
-    apellido_paterno_familiar: '',
-    apellido_materno_familiar: '',
-    telefono: '',
-    ci: ''
-  });
+  const [formData, setFormData] = useState(initialConsentimientoForm());
 
   useEffect(() => {
     fetchData();
@@ -29,12 +44,14 @@ const ConsentimientoManagement = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [consentimientosData, solicitudesData] = await Promise.all([
+      const [consentimientosData, solicitudesData, serviciosData] = await Promise.all([
         getConsentimientos(),
-        getSolicitudes()
+        getSolicitudes(),
+        getServicios()
       ]);
       setConsentimientos(consentimientosData.results || consentimientosData || []);
       setSolicitudes(solicitudesData.results || solicitudesData || []);
+      setServicios(serviciosData.results || serviciosData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -48,7 +65,7 @@ const ConsentimientoManagement = () => {
       setFormData({
         nro_solicitud: consentimiento.nro_solicitud || '',
         fecha: consentimiento.fecha || '',
-        servicio: consentimiento.servicio || '',
+        id_servicio: consentimiento.id_servicio || '',
         nombre_familiar: consentimiento.nombre_familiar || '',
         apellido_paterno_familiar: consentimiento.apellido_paterno_familiar || '',
         apellido_materno_familiar: consentimiento.apellido_materno_familiar || '',
@@ -57,16 +74,7 @@ const ConsentimientoManagement = () => {
       });
     } else {
       setEditingConsentimiento(null);
-      setFormData({
-        nro_solicitud: '',
-        fecha: new Date().toISOString().split('T')[0],
-        servicio: '',
-        nombre_familiar: '',
-        apellido_paterno_familiar: '',
-        apellido_materno_familiar: '',
-        telefono: '',
-        ci: ''
-      });
+      setFormData(initialConsentimientoForm());
     }
     setIsModalOpen(true);
   };
@@ -116,7 +124,8 @@ const ConsentimientoManagement = () => {
     (c.ci?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (c.nro_solicitud?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (c.nombre_familiar?.toLowerCase() || '').includes(search.toLowerCase()) ||
-    (c.apellido_paterno_familiar?.toLowerCase() || '').includes(search.toLowerCase())
+    (c.apellido_paterno_familiar?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (c.servicio_nombre?.toLowerCase() || '').includes(search.toLowerCase())
   );
 
   return (
@@ -196,7 +205,7 @@ const ConsentimientoManagement = () => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-gray-900">{c.fecha}</div>
-                        <div className="text-xs text-gray-500">{c.servicio}</div>
+                        <div className="text-xs text-gray-500">{c.servicio_nombre || 'Sin servicio'}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -296,6 +305,8 @@ const ConsentimientoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={formData.ci}
                     onChange={(e) => setFormData({...formData, ci: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -307,6 +318,8 @@ const ConsentimientoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={formData.telefono}
                     onChange={(e) => setFormData({...formData, telefono: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -318,6 +331,7 @@ const ConsentimientoManagement = () => {
                   <input 
                     type="date" 
                     required
+                    max={getBoliviaToday()}
                     value={formData.fecha}
                     onChange={(e) => setFormData({...formData, fecha: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -326,14 +340,17 @@ const ConsentimientoManagement = () => {
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700">Servicio *</label>
-                  <input 
-                    type="text" 
+                  <select
                     required
-                    value={formData.servicio}
-                    onChange={(e) => setFormData({...formData, servicio: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="Ej: Banco de Sangre"
-                  />
+                    value={formData.id_servicio}
+                    onChange={(e) => setFormData({...formData, id_servicio: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                  >
+                    <option value="">-- Seleccionar Servicio --</option>
+                    {servicios.map(servicio => (
+                      <option key={servicio.id} value={servicio.id}>{servicio.nombre}</option>
+                    ))}
+                  </select>
                 </div>
 
               </form>

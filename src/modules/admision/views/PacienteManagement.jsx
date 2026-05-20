@@ -2,23 +2,55 @@ import React, { useState, useEffect } from 'react';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/pacienteService';
 import { Users, Plus, Edit2, Trash2, Search, X, Activity, Droplet } from 'lucide-react';
 
+const EDAD_UNIDADES = {
+  DIAS: 'días',
+  MESES: 'meses',
+  ANOS: 'años'
+};
+
+const getBoliviaToday = () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/La_Paz',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(new Date()).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const initialPacienteForm = () => ({
+  ci: '',
+  nombre: '',
+  apellido_paterno: '',
+  apellido_materno: '',
+  edad_valor: '',
+  edad_unidad: 'ANOS',
+  fecha_nacimiento: '',
+  sexo: '',
+  historia_clinica: '',
+  grupo_sanguineo: ''
+});
+
+const formatEdad = (valor, unidad) => {
+  if (!valor) return 'Edad no definida';
+  return `${valor} ${EDAD_UNIDADES[unidad] || unidad || ''}`.trim();
+};
+
+const buildPacientePayload = (formData) => ({
+  ...formData,
+  fecha_nacimiento: formData.fecha_nacimiento || null
+});
+
 const PacienteManagement = () => {
+  const boliviaToday = getBoliviaToday();
   const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPaciente, setEditingPaciente] = useState(null);
   const [search, setSearch] = useState('');
   
-  const [formData, setFormData] = useState({
-    ci: '',
-    nombre: '',
-    apellido_paterno: '',
-    apellido_materno: '',
-    edad: '',
-    sexo: '',
-    historia_clinica: '',
-    grupo_sanguineo: ''
-  });
+  const [formData, setFormData] = useState(initialPacienteForm());
 
   useEffect(() => {
     fetchData();
@@ -44,23 +76,16 @@ const PacienteManagement = () => {
         nombre: paciente.nombre || '',
         apellido_paterno: paciente.apellido_paterno || '',
         apellido_materno: paciente.apellido_materno || '',
-        edad: paciente.edad || '',
+        edad_valor: paciente.edad_valor || '',
+        edad_unidad: paciente.edad_unidad || 'ANOS',
+        fecha_nacimiento: paciente.fecha_nacimiento || '',
         sexo: paciente.sexo || '',
         historia_clinica: paciente.historia_clinica || '',
         grupo_sanguineo: paciente.grupo_sanguineo || ''
       });
     } else {
       setEditingPaciente(null);
-      setFormData({
-        ci: '',
-        nombre: '',
-        apellido_paterno: '',
-        apellido_materno: '',
-        edad: '',
-        sexo: '',
-        historia_clinica: '',
-        grupo_sanguineo: ''
-      });
+      setFormData(initialPacienteForm());
     }
     setIsModalOpen(true);
   };
@@ -73,11 +98,12 @@ const PacienteManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = buildPacientePayload(formData);
       if (editingPaciente) {
         // En backend la PK es CI, normalmente para actualizar se envía a la PK anterior
-        await updatePaciente(editingPaciente.ci, formData);
+        await updatePaciente(editingPaciente.ci, payload);
       } else {
-        await createPaciente(formData);
+        await createPaciente(payload);
       }
       handleCloseModal();
       fetchData();
@@ -186,7 +212,12 @@ const PacienteManagement = () => {
                     </td>
                     <td className="px-6 py-4 text-gray-600">
                       <div>CI: {p.ci}</div>
-                      <div className="text-xs text-gray-400">{p.edad} años • Sexo: {p.sexo}</div>
+                      <div className="text-xs text-gray-400">
+                        {formatEdad(p.edad_valor, p.edad_unidad)} • Sexo: {p.sexo || 'No especificado'}
+                      </div>
+                      {p.fecha_nacimiento && (
+                        <div className="text-xs text-gray-400">Nac.: {p.fecha_nacimiento}</div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1.5 bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md w-max text-xs font-medium border border-slate-200">
@@ -297,17 +328,38 @@ const PacienteManagement = () => {
                   <input 
                     type="number" 
                     required
-                    min="0"
-                    max="150"
-                    value={formData.edad}
-                    onChange={(e) => setFormData({...formData, edad: e.target.value})}
+                    min="1"
+                    value={formData.edad_valor}
+                    onChange={(e) => setFormData({...formData, edad_valor: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Sexo *</label>
-                  <select 
+                  <label className="text-sm font-medium text-gray-700">Unidad de edad *</label>
+                  <select
                     required
+                    value={formData.edad_unidad}
+                    onChange={(e) => setFormData({...formData, edad_unidad: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                  >
+                    <option value="DIAS">Días</option>
+                    <option value="MESES">Meses</option>
+                    <option value="ANOS">Años</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Fecha de nacimiento</label>
+                  <input
+                    type="date"
+                    max={boliviaToday}
+                    value={formData.fecha_nacimiento || ''}
+                    onChange={(e) => setFormData({...formData, fecha_nacimiento: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Sexo</label>
+                  <select 
                     value={formData.sexo}
                     onChange={(e) => setFormData({...formData, sexo: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
@@ -315,7 +367,6 @@ const PacienteManagement = () => {
                     <option value="">-- Seleccionar --</option>
                     <option value="M">Masculino</option>
                     <option value="F">Femenino</option>
-                    <option value="O">Otro</option>
                   </select>
                 </div>
 
