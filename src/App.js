@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './modules/auth/views/Login';
 import Dashboard from './modules/dashboard/views/Dashboard';
 import MainLayout from './components/layout/MainLayout';
+import GlobalAlert from './components/common/GlobalAlert';
 import UserManagement from './modules/users/views/UserManagement';
 import RoleManagement from './modules/users/views/RoleManagement';
 import PacienteManagement from './modules/admision/views/PacienteManagement';
@@ -40,6 +41,7 @@ const PublicRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
+      <GlobalAlert />
       <Router>
         <Routes>
           <Route 

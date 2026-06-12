@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getReacciones, createReaccion, updateReaccion, deleteReaccion } from '../services/reaccionService';
 import { getTransfusiones } from '../services/transfusionService';
 import { AlertTriangle, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 
@@ -96,6 +97,19 @@ const ReaccionManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'id_transfusion', label: 'Transfusión afectada', required: true },
+      { field: 'descripcion', label: 'Descripción de la reacción', required: true },
+      { field: 'fecha_hora', label: 'Fecha y hora', required: true }
+    ]);
+    if (minFechaHora && formData.fecha_hora && formData.fecha_hora < minFechaHora) {
+      errors.push('Fecha y hora: no puede ser anterior al inicio de la transfusión.');
+    }
+    if (maxFechaHora && formData.fecha_hora && formData.fecha_hora > maxFechaHora) {
+      errors.push('Fecha y hora: no puede ser posterior al fin de la transfusión ni estar en el futuro.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -114,10 +128,7 @@ const ReaccionManagement = () => {
       console.error(error);
       let errorMsg = 'Error al guardar la reaccion. Verifica los datos.';
       if (error.response?.data) {
-        const errorList = Object.entries(error.response.data)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += `\n\nDetalles:\n${errorList}`;
+        errorMsg += `\n\nDetalles:\n${formatBackendErrors(error.response.data)}`;
       }
       alert(errorMsg);
     }
@@ -215,7 +226,7 @@ const ReaccionManagement = () => {
 
       {viewingReaccion && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-orange-50/50">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <AlertTriangle className="text-orange-600 w-5 h-5" />
@@ -254,7 +265,7 @@ const ReaccionManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col">
+          <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between">
               <h2 className="text-xl font-bold flex items-center gap-2"><AlertTriangle className="text-orange-500" /> {editingReaccion ? 'Editar' : 'Registrar Reacción'}</h2>
               <button onClick={handleCloseModal}><X className="w-5 h-5" /></button>

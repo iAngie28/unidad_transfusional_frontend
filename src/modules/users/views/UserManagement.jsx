@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { getUsers, createUser, updateUser, deleteUser } from '../services/userService';
 import { getRoles } from '../services/roleService';
 import { Users, Plus, Edit2, Trash2, Search, X, Shield, Phone, Mail } from 'lucide-react';
+import {
+  TEXT_PATTERNS,
+  formatBackendErrors,
+  keepChars,
+  onlyDigits,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -80,6 +88,34 @@ const UserManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      {
+        field: 'username',
+        label: 'Usuario',
+        required: true,
+        pattern: TEXT_PATTERNS.username,
+        message: 'usa solo letras, números y @/./+/-/_.'
+      },
+      { field: 'password', label: 'Contraseña', required: () => !editingUser, minLength: 8 },
+      {
+        field: 'first_name',
+        label: 'Nombre',
+        required: true,
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      {
+        field: 'last_name',
+        label: 'Apellido',
+        required: true,
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      { field: 'telefono', label: 'Teléfono', integer: true },
+      { field: 'rol', label: 'Rol', required: true }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingUser) {
         await updateUser(editingUser.id, formData);
@@ -92,12 +128,7 @@ const UserManagement = () => {
       console.error('Error saving user:', error);
       let errorMsg = 'Ocurrió un error al guardar el usuario. Verifica los datos.';
       if (error.response && error.response.data) {
-        // Formatear los errores de validación del backend
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -280,8 +311,10 @@ const UserManagement = () => {
                   <input 
                     type="text" 
                     required
+                    pattern="[A-Za-z0-9@.+_-]+"
+                    title="Usa solo letras, números y @/./+/-/_"
                     value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
+                    onChange={(e) => setFormData({...formData, username: keepChars(e.target.value, 'username')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     placeholder="ej: jperez"
                   />
@@ -305,8 +338,10 @@ const UserManagement = () => {
                   <input 
                     type="text" 
                     required
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+"
+                    title="Solo se permiten letras y espacios"
                     value={formData.first_name}
-                    onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                    onChange={(e) => setFormData({...formData, first_name: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     placeholder="Juan"
                   />
@@ -316,8 +351,10 @@ const UserManagement = () => {
                   <input 
                     type="text" 
                     required
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+"
+                    title="Solo se permiten letras y espacios"
                     value={formData.last_name}
-                    onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                    onChange={(e) => setFormData({...formData, last_name: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     placeholder="Pérez"
                   />
@@ -337,8 +374,11 @@ const UserManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Teléfono</label>
                   <input 
                     type="text" 
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    title="Solo se permiten números"
                     value={formData.telefono}
-                    onChange={(e) => setFormData({...formData, telefono: e.target.value})}
+                    onChange={(e) => setFormData({...formData, telefono: onlyDigits(e.target.value)})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     placeholder="71234567"
                   />

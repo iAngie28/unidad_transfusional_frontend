@@ -2,7 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { getConsentimientos, createConsentimiento, updateConsentimiento, deleteConsentimiento } from '../services/consentimientoService';
 import { getSolicitudes } from '../services/solicitudService';
 import { getServicios } from '../services/servicioService';
-import { FileCheck, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+import { FileCheck, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
+import {
+  TEXT_PATTERNS,
+  formatBackendErrors,
+  keepChars,
+  onlyDigits,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const getBoliviaToday = () => {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -32,7 +40,9 @@ const ConsentimientoManagement = () => {
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingConsentimiento, setEditingConsentimiento] = useState(null);
+  const [viewingConsentimiento, setViewingConsentimiento] = useState(null);
   const [search, setSearch] = useState('');
   
   const [formData, setFormData] = useState(initialConsentimientoForm());
@@ -84,8 +94,47 @@ const ConsentimientoManagement = () => {
     setEditingConsentimiento(null);
   };
 
+  const handleOpenDetails = (consentimiento) => {
+    setViewingConsentimiento(consentimiento);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleCloseDetailsModal = () => {
+    setIsDetailsModalOpen(false);
+    setViewingConsentimiento(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nro_solicitud', label: 'Solicitud de transfusión', required: true },
+      { field: 'fecha', label: 'Fecha', required: true },
+      { field: 'id_servicio', label: 'Servicio', required: true },
+      {
+        field: 'nombre_familiar',
+        label: 'Nombre del familiar',
+        required: true,
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      {
+        field: 'apellido_paterno_familiar',
+        label: 'Apellido paterno',
+        required: true,
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      {
+        field: 'apellido_materno_familiar',
+        label: 'Apellido materno',
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      { field: 'telefono', label: 'Teléfono', required: true, integer: true, maxLength: 30 },
+      { field: 'ci', label: 'CI del familiar', required: true, integer: true, maxLength: 20 }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingConsentimiento) {
         await updateConsentimiento(editingConsentimiento.id, formData);
@@ -98,11 +147,7 @@ const ConsentimientoManagement = () => {
       console.error('Error saving consentimiento:', error);
       let errorMsg = 'Ocurrió un error al guardar el consentimiento. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -168,7 +213,7 @@ const ConsentimientoManagement = () => {
                   <th className="px-6 py-4">N° Solicitud</th>
                   <th className="px-6 py-4">Familiar Responsable</th>
                   <th className="px-6 py-4">CI / Teléfono</th>
-                  <th className="px-6 py-4">Fecha / Servicio</th>
+                  <th className="px-6 py-4">Fecha / Servicio / Registro</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -190,7 +235,7 @@ const ConsentimientoManagement = () => {
                   </tr>
                 ) : (
                   filteredConsentimientos.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(c)}>
                       <td className="px-6 py-4 font-mono font-medium text-indigo-600">
                         {c.nro_solicitud}
                       </td>
@@ -204,11 +249,21 @@ const ConsentimientoManagement = () => {
                         <div className="text-xs text-gray-400">Tel: {c.telefono}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-gray-900">{c.fecha}</div>
-                        <div className="text-xs text-gray-500">{c.servicio_nombre || 'Sin servicio'}</div>
+                        <div className="flex flex-col gap-1">
+                          <div className="text-gray-900">{c.fecha}</div>
+                          <div className="text-xs text-gray-500">{c.servicio_nombre || 'Sin servicio'}</div>
+                          <span className="text-xs text-gray-500">Por: <span className="font-medium text-gray-700">{c.created_by_name || 'Sistema'}</span></span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => handleOpenDetails(c)}
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Ver Detalles"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           <button 
                             onClick={() => handleOpenModal(c)}
                             className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
@@ -273,8 +328,11 @@ const ConsentimientoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    maxLength={100}
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+"
+                    title="Solo se permiten letras y espacios"
                     value={formData.nombre_familiar}
-                    onChange={(e) => setFormData({...formData, nombre_familiar: e.target.value})}
+                    onChange={(e) => setFormData({...formData, nombre_familiar: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
@@ -284,8 +342,11 @@ const ConsentimientoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    maxLength={100}
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+"
+                    title="Solo se permiten letras y espacios"
                     value={formData.apellido_paterno_familiar}
-                    onChange={(e) => setFormData({...formData, apellido_paterno_familiar: e.target.value})}
+                    onChange={(e) => setFormData({...formData, apellido_paterno_familiar: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
@@ -294,8 +355,11 @@ const ConsentimientoManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Apellido Materno</label>
                   <input 
                     type="text" 
+                    maxLength={100}
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]*"
+                    title="Solo se permiten letras y espacios"
                     value={formData.apellido_materno_familiar}
-                    onChange={(e) => setFormData({...formData, apellido_materno_familiar: e.target.value})}
+                    onChange={(e) => setFormData({...formData, apellido_materno_familiar: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
@@ -306,9 +370,11 @@ const ConsentimientoManagement = () => {
                     type="text" 
                     required
                     inputMode="numeric"
-                    pattern="[0-9]*"
+                    maxLength={20}
+                    pattern="[0-9]+"
+                    title="Solo se permiten números"
                     value={formData.ci}
-                    onChange={(e) => setFormData({...formData, ci: e.target.value})}
+                    onChange={(e) => setFormData({...formData, ci: onlyDigits(e.target.value)})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
@@ -319,9 +385,11 @@ const ConsentimientoManagement = () => {
                     type="text" 
                     required
                     inputMode="numeric"
-                    pattern="[0-9]*"
+                    maxLength={30}
+                    pattern="[0-9]+"
+                    title="Solo se permiten números"
                     value={formData.telefono}
-                    onChange={(e) => setFormData({...formData, telefono: e.target.value})}
+                    onChange={(e) => setFormData({...formData, telefono: onlyDigits(e.target.value)})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
@@ -370,6 +438,78 @@ const ConsentimientoManagement = () => {
                 className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-600/20"
               >
                 {editingConsentimiento ? 'Guardar Cambios' : 'Registrar Consentimiento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {isDetailsModalOpen && viewingConsentimiento && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-emerald-50/50">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <FileCheck className="text-emerald-600 w-5 h-5" />
+                Detalles del Consentimiento
+              </h2>
+              <button
+                onClick={handleCloseDetailsModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Nro. Solicitud Asociada</p>
+                    <p className="font-mono text-gray-900">{viewingConsentimiento.nro_solicitud || 'No especificado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Fecha</p>
+                    <p className="font-semibold text-gray-900">{viewingConsentimiento.fecha}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500 font-medium mb-1">Familiar Responsable</p>
+                    <p className="font-semibold text-gray-900">
+                      {viewingConsentimiento.nombre_familiar} {viewingConsentimiento.apellido_paterno_familiar} {viewingConsentimiento.apellido_materno_familiar}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">C.I. del Familiar</p>
+                    <p className="font-mono text-gray-900">{viewingConsentimiento.ci}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Teléfono</p>
+                    <p className="font-semibold text-gray-900">{viewingConsentimiento.telefono || 'Sin especificar'}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500 font-medium mb-1">Servicio</p>
+                    <p className="font-semibold text-gray-900">{viewingConsentimiento.servicio_nombre || 'No especificado'}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500 font-medium mb-1">Auditoría de Registro</p>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-sm text-gray-700">
+                        <span className="text-gray-500 text-xs">Creado por:</span> <span className="font-medium">{viewingConsentimiento.created_by_name || 'Sistema'}</span>
+                      </p>
+                      {viewingConsentimiento.updated_by_name && (
+                        <p className="text-sm text-gray-700">
+                          <span className="text-gray-500 text-xs">Última edición por:</span> <span className="font-medium">{viewingConsentimiento.updated_by_name}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button onClick={handleCloseDetailsModal} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
+                Cerrar
               </button>
             </div>
           </div>

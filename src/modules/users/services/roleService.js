@@ -7,6 +7,11 @@ export const getRoles = async (params = {}) => {
   return response.data;
 };
 
+export const getPermisos = async () => {
+  const response = await api.get('/users/permisos/');
+  return response.data;
+};
+
 export const getRole = async (id) => {
   const response = await api.get(`${ROLE_URL}${id}/`);
   return response.data;

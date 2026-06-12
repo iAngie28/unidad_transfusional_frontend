@@ -3,6 +3,7 @@ import { getDescartes, createDescarte, updateDescarte, deleteDescarte } from '..
 import { getHemocomponentes } from '../services/hemocomponenteService';
 import { getHospitales } from '../services/hospitalService';
 import { Trash2, Plus, Edit2, Search, X, AlertTriangle } from 'lucide-react';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 
@@ -107,6 +108,20 @@ const DescarteManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nro_bolsa', label: 'Hemocomponente', required: true },
+      { field: 'tipo_accion', label: 'Tipo de acción', required: true },
+      { field: 'hospital', label: 'Hospital destino', required: (data) => data.tipo_accion === INTERCAMBIO_HOSPITAL },
+      { field: 'fecha_hora', label: 'Fecha y hora', required: true }
+    ]);
+    if (minFechaHora && formData.fecha_hora && formData.fecha_hora < minFechaHora) {
+      errors.push('Fecha y hora: no puede ser anterior al ingreso del hemocomponente.');
+    }
+    if (formData.fecha_hora && formData.fecha_hora > getBoliviaDateTimeLocal()) {
+      errors.push('Fecha y hora: no puede estar en el futuro.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -126,11 +141,7 @@ const DescarteManagement = () => {
       console.error('Error saving descarte:', error);
       let errorMsg = 'Ocurrió un error al registrar el descarte. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -276,7 +287,7 @@ const DescarteManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <AlertTriangle className="text-amber-500 w-5 h-5" />

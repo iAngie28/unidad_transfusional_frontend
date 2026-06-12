@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createHospital, deleteHospital, getHospitales, updateHospital } from '../services/hospitalService';
 import { Building2, Edit2, Plus, Search, Trash2, X } from 'lucide-react';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const HospitalManagement = () => {
   const [hospitales, setHospitales] = useState([]);
@@ -53,6 +54,12 @@ const HospitalManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nombre', label: 'Nombre', required: true, maxLength: 120 },
+      { field: 'descripcion', label: 'Descripción', maxLength: 255 }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingHospital) {
         await updateHospital(editingHospital.id, formData);
@@ -65,11 +72,7 @@ const HospitalManagement = () => {
       console.error('Error saving hospital:', error);
       let errorMsg = 'Ocurrió un error al guardar el hospital. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -193,7 +196,7 @@ const HospitalManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h2 className="text-xl font-bold text-gray-900">
                 {editingHospital ? 'Editar Hospital' : 'Nuevo Hospital'}
@@ -213,6 +216,7 @@ const HospitalManagement = () => {
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={formData.nombre}
                     onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -224,6 +228,7 @@ const HospitalManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Descripción</label>
                   <textarea
                     rows={3}
+                    maxLength={255}
                     value={formData.descripcion}
                     onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"

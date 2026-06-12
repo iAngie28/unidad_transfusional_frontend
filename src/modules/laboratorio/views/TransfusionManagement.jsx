@@ -4,7 +4,15 @@ import { getHemocomponentes } from '../../inventario/services/hemocomponenteServ
 import { getPacientes } from '../../admision/services/pacienteService';
 import { getServicios } from '../../admision/services/servicioService';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ActivitySquare, Plus, Edit2, Trash2, X, Eye } from 'lucide-react';
+import {
+  formatBackendErrors,
+  onlyPositiveInteger,
+  preventInvalidNumberKeys,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 const GRUPOS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -60,6 +68,9 @@ const TransfusionManagement = () => {
   const [editingTransfusion, setEditingTransfusion] = useState(null);
   const [search, setSearch] = useState('');
   
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState(getInitialTransfusionForm(user?.id || ''));
 
   const [viewingTransfusion, setViewingTransfusion] = useState(null);
@@ -76,10 +87,19 @@ const TransfusionManagement = () => {
         getPacientes(),
         getServicios()
       ]);
-      setTransfusiones(transData.results || transData || []);
+      const trans = transData.results || transData || [];
+      setTransfusiones(trans);
       setBolsas(bolsasData.results || bolsasData || []);
       setPacientes(pacData.results || pacData || []);
       setServicios(serviciosData.results || serviciosData || []);
+      
+      if (location.state?.openDetailsId) {
+        const itemToOpen = trans.find(t => t.id === location.state.openDetailsId);
+        if (itemToOpen) {
+          handleOpenView(itemToOpen);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     }
@@ -114,6 +134,29 @@ const TransfusionManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nro_bolsa', label: 'Bolsa hemocomponente', required: true },
+      { field: 'ci_paciente', label: 'Paciente receptor', required: true },
+      { field: 'id_servicio', label: 'Servicio', required: true },
+      { field: 'grupo_cabecera_h', label: 'Grupo cabecera', required: true },
+      { field: 'diagnostico', label: 'Diagnóstico', required: true },
+      { field: 'hora_inicio', label: 'Hora inicio', required: true },
+      { field: 'ml', label: 'ML', required: true, integer: true, min: 1, max: formData.fraccionado ? Math.max(1, mlDisponible) : 1000 }
+    ]);
+    if (minHoraInicio && formData.hora_inicio && formData.hora_inicio < minHoraInicio) {
+      errors.push('Hora inicio: no puede ser anterior al ingreso del hemocomponente.');
+    }
+    if (formData.hora_fin && formData.hora_inicio && formData.hora_fin < formData.hora_inicio) {
+      errors.push('Hora fin: no puede ser anterior a la hora de inicio.');
+    }
+    if (formData.hora_inicio && formData.hora_inicio > getBoliviaDateTimeLocal()) {
+      errors.push('Hora inicio: no puede estar en el futuro.');
+    }
+    if (formData.hora_fin && formData.hora_fin > getBoliviaDateTimeLocal()) {
+      errors.push('Hora fin: no puede estar en el futuro.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -137,7 +180,7 @@ const TransfusionManagement = () => {
       console.error('Error saving:', error);
       let errorMsg = 'Error al guardar. Verifica los datos.';
       if (error.response?.data) {
-        errorMsg += '\n\n' + JSON.stringify(error.response.data);
+        errorMsg += '\n\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -210,7 +253,7 @@ const TransfusionManagement = () => {
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
               {filtered.map(t => (
-                <tr key={t.id} className="hover:bg-gray-50">
+                <tr key={t.id} className="hover:bg-gray-50 cursor-pointer group" onClick={() => handleOpenView(t)}>
                   <td className="px-6 py-4 font-mono font-bold">{t.nro_bolsa}</td>
                   <td className="px-6 py-4 font-semibold text-indigo-700">{t.paciente_nombre}</td>
                   <td className="px-6 py-4">{t.servicio_nombre}</td>
@@ -221,7 +264,7 @@ const TransfusionManagement = () => {
                       <span><span className="text-blue-600">ML:</span> {t.ml}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 flex justify-end gap-2">
+                  <td className="px-6 py-4 flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => handleOpenView(t)} className="p-1.5 text-gray-400 hover:text-blue-600 bg-blue-50 rounded-lg" title="Ver Detalles"><Eye className="w-4 h-4" /></button>
                     <button onClick={() => handleOpenModal(t)} className="p-1.5 text-gray-400 hover:text-blue-600 bg-blue-50 rounded-lg" title="Editar"><Edit2 className="w-4 h-4" /></button>
                     <button onClick={() => handleDelete(t.id)} className="p-1.5 text-gray-400 hover:text-red-600 bg-red-50 rounded-lg" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
@@ -348,7 +391,7 @@ const TransfusionManagement = () => {
 
                 <div className="col-span-2">
                   <label className="text-xs font-medium text-gray-700">ML *</label>
-                  <input type="number" required min="1" max={formData.fraccionado ? mlDisponible || 1 : 1000} disabled={!formData.fraccionado} value={formData.ml} onChange={(e) => setFormData({...formData, ml: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500" />
+                  <input type="number" required min="1" max={formData.fraccionado ? mlDisponible || 1 : 1000} step="1" inputMode="numeric" disabled={!formData.fraccionado} value={formData.ml} onKeyDown={preventInvalidNumberKeys} onChange={(e) => setFormData({...formData, ml: onlyPositiveInteger(e.target.value, formData.fraccionado ? mlDisponible || 1 : 1000)})} className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500" />
                   <p className="text-xs text-gray-500 mt-1">Disponible para esta bolsa: {mlDisponible} ml.</p>
                 </div>
                 

@@ -3,6 +3,7 @@ import { getTrazabilidades, createTrazabilidad, updateTrazabilidad, deleteTrazab
 import { getHemocomponentes } from '../services/hemocomponenteService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { ListTree, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 
@@ -103,6 +104,19 @@ const TrazabilidadManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nro_bolsa', label: 'Hemocomponente', required: true },
+      { field: 'evento', label: 'Tipo de evento', required: true },
+      { field: 'fecha_hora', label: 'Fecha y hora', required: true }
+    ]);
+    if (minFechaHora && formData.fecha_hora && formData.fecha_hora < minFechaHora) {
+      errors.push('Fecha y hora: no puede ser anterior al ingreso del hemocomponente.');
+    }
+    if (formData.fecha_hora && formData.fecha_hora > getBoliviaDateTimeLocal()) {
+      errors.push('Fecha y hora: no puede estar en el futuro.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -120,11 +134,7 @@ const TrazabilidadManagement = () => {
       console.error('Error saving trazabilidad:', error);
       let errorMsg = 'Ocurrió un error al registrar el evento. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -260,7 +270,7 @@ const TrazabilidadManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <ListTree className="text-cyan-600 w-5 h-5" />

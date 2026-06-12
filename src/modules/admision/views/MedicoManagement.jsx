@@ -1,16 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { getMedicos, createMedico, updateMedico, deleteMedico } from '../services/medicoService';
 import { getEspecialidades } from '../services/especialidadService';
-import { Stethoscope, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Stethoscope, Plus, Edit2, Trash2, Search, X, Mail, Phone, MapPin, BadgeCheck, Eye } from 'lucide-react';
+import {
+  TEXT_PATTERNS,
+  formatBackendErrors,
+  keepChars,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const MedicoManagement = () => {
   const [medicos, setMedicos] = useState([]);
   const [especialidades, setEspecialidades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingMedico, setEditingMedico] = useState(null);
+  const [viewingMedico, setViewingMedico] = useState(null);
   const [search, setSearch] = useState('');
   
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     matricula_profesional: '',
     nombre: '',
@@ -30,8 +43,17 @@ const MedicoManagement = () => {
         getMedicos(),
         getEspecialidades()
       ]);
-      setMedicos(medicosData.results || medicosData || []);
+      const meds = medicosData.results || medicosData || [];
+      setMedicos(meds);
       setEspecialidades(especialidadesData.results || especialidadesData || []);
+
+      if (location.state?.openDetailsId) {
+        const itemToOpen = meds.find(m => m.id === location.state.openDetailsId);
+        if (itemToOpen) {
+          handleOpenDetails(itemToOpen);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      }
     } catch (error) {
       console.error('Error fetching medicos:', error);
     } finally {
@@ -67,8 +89,44 @@ const MedicoManagement = () => {
     setEditingMedico(null);
   };
 
+  const handleOpenDetails = (medico) => {
+    setViewingMedico(medico);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleCloseDetailsModal = () => {
+    setIsDetailsModalOpen(false);
+    setViewingMedico(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'matricula_profesional', label: 'Matrícula profesional', required: true, maxLength: 50 },
+      {
+        field: 'nombre',
+        label: 'Nombre',
+        required: true,
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      {
+        field: 'apellido_paterno',
+        label: 'Apellido paterno',
+        required: true,
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      {
+        field: 'apellido_materno',
+        label: 'Apellido materno',
+        pattern: TEXT_PATTERNS.lettersSpaces,
+        message: 'solo se permiten letras y espacios.'
+      },
+      { field: 'especialidad', label: 'Especialidad', required: true }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingMedico) {
         await updateMedico(editingMedico.id, formData);
@@ -81,11 +139,7 @@ const MedicoManagement = () => {
       console.error('Error saving medico:', error);
       let errorMsg = 'Ocurrió un error al guardar el médico. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -173,7 +227,7 @@ const MedicoManagement = () => {
                 </tr>
               ) : (
                 filteredMedicos.map((m) => (
-                  <tr key={m.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <tr key={m.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(m)}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
@@ -192,8 +246,15 @@ const MedicoManagement = () => {
                     <td className="px-6 py-4 font-mono text-gray-600">
                       {m.matricula_profesional}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => handleOpenDetails(m)}
+                          className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          title="Ver Detalles"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                         <button 
                           onClick={() => handleOpenModal(m)}
                           className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
@@ -242,6 +303,7 @@ const MedicoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    maxLength={50}
                     value={formData.matricula_profesional}
                     onChange={(e) => setFormData({...formData, matricula_profesional: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
@@ -254,8 +316,11 @@ const MedicoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    maxLength={100}
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+"
+                    title="Solo se permiten letras y espacios"
                     value={formData.nombre}
-                    onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                    onChange={(e) => setFormData({...formData, nombre: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                   />
                 </div>
@@ -265,8 +330,11 @@ const MedicoManagement = () => {
                   <input 
                     type="text" 
                     required
+                    maxLength={100}
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+"
+                    title="Solo se permiten letras y espacios"
                     value={formData.apellido_paterno}
-                    onChange={(e) => setFormData({...formData, apellido_paterno: e.target.value})}
+                    onChange={(e) => setFormData({...formData, apellido_paterno: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                   />
                 </div>
@@ -274,8 +342,11 @@ const MedicoManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Apellido Materno</label>
                   <input 
                     type="text" 
+                    maxLength={100}
+                    pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]*"
+                    title="Solo se permiten letras y espacios"
                     value={formData.apellido_materno}
-                    onChange={(e) => setFormData({...formData, apellido_materno: e.target.value})}
+                    onChange={(e) => setFormData({...formData, apellido_materno: keepChars(e.target.value, 'lettersSpaces')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                   />
                 </div>
@@ -313,6 +384,53 @@ const MedicoManagement = () => {
                 className="px-5 py-2.5 text-sm font-medium text-white bg-teal-600 rounded-xl hover:bg-teal-700 transition-colors shadow-sm shadow-teal-600/20"
               >
                 {editingMedico ? 'Guardar Cambios' : 'Registrar Médico'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDetailsModalOpen && viewingMedico && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Stethoscope className="text-indigo-600 w-5 h-5" />
+                Detalles del Médico
+              </h2>
+              <button onClick={handleCloseDetailsModal} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 grid grid-cols-1 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Nombre Completo</p>
+                  <p className="font-semibold text-gray-900 text-lg">
+                    Dr/Dra. {viewingMedico.apellido_paterno} {viewingMedico.apellido_materno} {viewingMedico.nombre}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Especialidad</p>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                    {viewingMedico.especialidad_nombre || viewingMedico.especialidad}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Teléfono</p>
+                  <p className="font-mono text-gray-800">{viewingMedico.telefono || 'No registrado'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Matrícula Profesional / ID</p>
+                  <p className="font-mono text-gray-800">{viewingMedico.id}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button onClick={handleCloseDetailsModal} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
+                Cerrar
               </button>
             </div>
           </div>

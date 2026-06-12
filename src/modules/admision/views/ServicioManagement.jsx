@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { createServicio, deleteServicio, getServicios, updateServicio } from '../services/servicioService';
-import { Stethoscope, Edit2, Plus, Search, Trash2, X } from 'lucide-react';
+import { Stethoscope, Edit2, Plus, Search, Trash2, X, Building2 } from 'lucide-react';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const ServicioManagement = () => {
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingServicio, setEditingServicio] = useState(null);
+  const [viewingServicio, setViewingServicio] = useState(null);
   const [search, setSearch] = useState('');
   const [formData, setFormData] = useState({
     nombre: '',
@@ -51,8 +54,24 @@ const ServicioManagement = () => {
     setEditingServicio(null);
   };
 
+  const handleOpenDetails = (servicio) => {
+    setViewingServicio(servicio);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleCloseDetailsModal = () => {
+    setIsDetailsModalOpen(false);
+    setViewingServicio(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nombre', label: 'Nombre', required: true, maxLength: 120 },
+      { field: 'descripcion', label: 'Descripción', maxLength: 255 }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingServicio) {
         await updateServicio(editingServicio.id, formData);
@@ -65,11 +84,7 @@ const ServicioManagement = () => {
       console.error('Error saving servicio:', error);
       let errorMsg = 'Ocurrió un error al guardar el servicio. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -152,7 +167,7 @@ const ServicioManagement = () => {
                 </tr>
               ) : (
                 filteredServicios.map((servicio) => (
-                  <tr key={servicio.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <tr key={servicio.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(servicio)}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600">
@@ -164,7 +179,7 @@ const ServicioManagement = () => {
                     <td className="px-6 py-4 text-gray-600">
                       {servicio.descripcion || <span className="text-gray-400 italic">Sin descripción</span>}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => handleOpenModal(servicio)}
@@ -193,7 +208,7 @@ const ServicioManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h2 className="text-xl font-bold text-gray-900">
                 {editingServicio ? 'Editar Servicio' : 'Nuevo Servicio'}
@@ -213,6 +228,7 @@ const ServicioManagement = () => {
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={formData.nombre}
                     onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none"
@@ -224,6 +240,7 @@ const ServicioManagement = () => {
                   <label className="text-sm font-medium text-gray-700">Descripción</label>
                   <textarea
                     rows={3}
+                    maxLength={255}
                     value={formData.descripcion}
                     onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none resize-none"
@@ -247,6 +264,49 @@ const ServicioManagement = () => {
                 className="px-5 py-2.5 text-sm font-medium text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-colors shadow-sm shadow-cyan-600/20"
               >
                 {editingServicio ? 'Guardar Cambios' : 'Crear Servicio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDetailsModalOpen && viewingServicio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-blue-50/50">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Building2 className="text-blue-600 w-5 h-5" />
+                Detalles del Servicio
+              </h2>
+              <button onClick={handleCloseDetailsModal} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 grid grid-cols-1 gap-4">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Nombre del Servicio</p>
+                  <p className="font-semibold text-gray-900 text-lg">
+                    {viewingServicio.nombre}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Descripción</p>
+                  <p className="text-gray-700">
+                    {viewingServicio.descripcion || <span className="italic text-gray-400">Sin descripción</span>}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">ID del Sistema</p>
+                  <p className="font-mono text-gray-800">{viewingServicio.id}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button onClick={handleCloseDetailsModal} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
+                Cerrar
               </button>
             </div>
           </div>

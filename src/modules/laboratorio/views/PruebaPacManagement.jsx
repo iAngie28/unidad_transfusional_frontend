@@ -5,14 +5,19 @@ import { getSolicitudes } from '../../admision/services/solicitudService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { FlaskConical, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
 import SegmentedControl from '../../../components/common/SegmentedControl';
+import {
+  TEXT_PATTERNS,
+  formatBackendErrors,
+  keepChars,
+  onlyDecimal,
+  preventInvalidNumberKeys,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 
 const REACTIVOS = [
-  { value: 'POSITIVO', label: 'POSITIVO' },
-  { value: 'NEGATIVO', label: 'NEGATIVO' }
-];
-const POSITIVO_NEGATIVO = [
   { value: 'POSITIVO', label: 'POSITIVO' },
   { value: 'NEGATIVO', label: 'NEGATIVO' }
 ];
@@ -127,6 +132,27 @@ const PruebaPacManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'fecha_hora', label: 'Fecha y hora', required: true },
+      { field: 'paciente_id', label: 'Paciente', required: true },
+      { field: 'nro_solicitud', label: 'Solicitud asociada', required: true },
+      { field: 'fenotipo', label: 'Fenotipo', required: true },
+      { field: 'hto', label: 'HTO', required: true, decimal: true, min: 0, max: 99.99 },
+      { field: 'hb', label: 'HB', required: true, decimal: true, min: 0 },
+      {
+        field: 'resultado',
+        label: 'Resultado final',
+        required: true,
+        maxLength: 100,
+        pattern: TEXT_PATTERNS.textNumberSlash,
+        message: 'solo se permiten letras, números, espacios y /.'
+      }
+    ]);
+    if (formData.fecha_hora && formData.fecha_hora > getBoliviaDateTimeLocal()) {
+      errors.push('Fecha y hora: no puede estar en el futuro.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -145,11 +171,7 @@ const PruebaPacManagement = () => {
       console.error('Error saving prueba:', error);
       let errorMsg = 'Ocurrió un error al guardar. Verifica los datos.';
       if (error.response?.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\n' + errorList;
+        errorMsg += '\n\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -412,11 +434,11 @@ const PruebaPacManagement = () => {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">HTO (%) *</label>
-                  <input type="number" step="0.01" min="0" max="99.99" required value={formData.hto} onChange={(e) => setFormData({...formData, hto: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="number" step="0.01" min="0" max="99.99" required value={formData.hto} onKeyDown={preventInvalidNumberKeys} onChange={(e) => setFormData({...formData, hto: onlyDecimal(e.target.value, 2)})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">HB (Número) *</label>
-                  <input type="number" step="0.01" min="0" required value={formData.hb} onChange={(e) => setFormData({...formData, hb: e.target.value})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="number" step="0.01" min="0" required value={formData.hb} onKeyDown={preventInvalidNumberKeys} onChange={(e) => setFormData({...formData, hb: onlyDecimal(e.target.value, 2)})} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-gray-700">Coombs Directo *</label>
@@ -428,7 +450,7 @@ const PruebaPacManagement = () => {
 
                 <div className="space-y-1.5 md:col-span-3 bg-purple-50 p-4 rounded-xl border border-purple-100 mt-2">
                   <label className="text-sm font-bold text-purple-900">Resultado Final *</label>
-                  <input type="text" required maxLength="100" pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9/ ]+" title="Solo se permiten letras, números, espacios y /" value={formData.resultado} onChange={(e) => setFormData({...formData, resultado: e.target.value.toUpperCase()})} className="w-full mt-2 px-4 py-2 border border-purple-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none font-bold text-gray-900 bg-white shadow-sm" />
+                  <input type="text" required maxLength="100" pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9/ ]+" title="Solo se permiten letras, números, espacios y /" value={formData.resultado} onChange={(e) => setFormData({...formData, resultado: keepChars(e.target.value, 'textNumberSlash').toUpperCase()})} className="w-full mt-2 px-4 py-2 border border-purple-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none font-bold text-gray-900 bg-white shadow-sm" />
                 </div>
 
               </form>

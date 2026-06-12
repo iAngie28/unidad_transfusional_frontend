@@ -5,14 +5,11 @@ import { getSolicitudes } from '../../admision/services/solicitudService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Microscope, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
 import SegmentedControl from '../../../components/common/SegmentedControl';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 
 const REACTIVOS = [
-  { value: 'POSITIVO', label: 'POSITIVO' },
-  { value: 'NEGATIVO', label: 'NEGATIVO' }
-];
-const POSITIVO_NEGATIVO = [
   { value: 'POSITIVO', label: 'POSITIVO' },
   { value: 'NEGATIVO', label: 'NEGATIVO' }
 ];
@@ -131,6 +128,20 @@ const PruebaHemaManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nro_bolsa', label: 'N° bolsa', required: true },
+      { field: 'nro_solicitud', label: 'Solicitud asociada', required: true },
+      { field: 'fecha', label: 'Fecha y hora', required: true },
+      { field: 'fenotipo', label: 'Fenotipo', required: true }
+    ]);
+    if (minFecha && formData.fecha && formData.fecha < minFecha) {
+      errors.push('Fecha y hora: no puede ser anterior al ingreso del hemocomponente.');
+    }
+    if (formData.fecha && formData.fecha > getBoliviaDateTimeLocal()) {
+      errors.push('Fecha y hora: no puede estar en el futuro.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -147,7 +158,7 @@ const PruebaHemaManagement = () => {
       console.error('Error saving prueba hema:', error);
       let errorMsg = 'Ocurrió un error al guardar. Verifica los datos.';
       if (error.response?.data) {
-        errorMsg += '\n\n' + JSON.stringify(error.response.data);
+        errorMsg += '\n\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }

@@ -3,7 +3,16 @@ import { getCitaciones, createCitacion, updateCitacion, deleteCitacion } from '.
 import { getSolicitudes } from '../services/solicitudService';
 import { getServicios } from '../services/servicioService';
 import { useAuth } from '../../../contexts/AuthContext';
-import { Plus, Edit2, Trash2, Search, X, CalendarClock } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, CalendarClock, Eye } from 'lucide-react';
+import {
+  TEXT_PATTERNS,
+  formatBackendErrors,
+  keepChars,
+  onlyPositiveInteger,
+  preventInvalidNumberKeys,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const getBoliviaNow = () => {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -41,7 +50,7 @@ const getInitialCitacionForm = (userId = '') => ({
   id_servicio: '',
   sala_cama: '',
   cantidad: '',
-  codigo_donante: '',
+  codigos_donante: [{ codigo: '' }],
   grupo_factor: '',
   tipo: ''
 });
@@ -54,7 +63,9 @@ const CitacionManagement = () => {
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingCitacion, setEditingCitacion] = useState(null);
+  const [viewingCitacion, setViewingCitacion] = useState(null);
   const [search, setSearch] = useState('');
   
   const [formData, setFormData] = useState(getInitialCitacionForm(user?.id || ''));
@@ -92,7 +103,7 @@ const CitacionManagement = () => {
         id_servicio: citacion.id_servicio || '',
         sala_cama: citacion.sala_cama || '',
         cantidad: citacion.cantidad || '',
-        codigo_donante: citacion.codigo_donante || '',
+        codigos_donante: citacion.codigos_donante?.length ? citacion.codigos_donante.map(c => ({...c})) : [{ codigo: '' }],
         grupo_factor: citacion.grupo_factor || '',
         tipo: citacion.tipo || ''
       });
@@ -108,8 +119,41 @@ const CitacionManagement = () => {
     setEditingCitacion(null);
   };
 
+  const handleOpenDetails = (citacion) => {
+    setViewingCitacion(citacion);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleCloseDetailsModal = () => {
+    setIsDetailsModalOpen(false);
+    setViewingCitacion(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const codigosInvalidos = formData.codigos_donante.filter(c => !c.codigo.trim() || !TEXT_PATTERNS.alphanumeric.test(c.codigo));
+    if (codigosInvalidos.length > 0) {
+      alert('Todos los códigos de donante deben estar llenos y contener solo letras y números.');
+      return;
+    }
+
+    const errors = validateFormData(formData, [
+      { field: 'nro_solicitud', label: 'Solicitud de transfusión', required: true },
+      { field: 'grupo_factor', label: 'Grupo / factor', required: true },
+      { field: 'fecha', label: 'Fecha', required: true },
+      { field: 'hora', label: 'Hora', required: true },
+      { field: 'tipo', label: 'Tipo de donación', required: true },
+      { field: 'id_servicio', label: 'Servicio', required: true },
+      { field: 'cantidad', label: 'Cantidad', required: true, integer: true, min: 1, max: 10 },
+      {
+        field: 'sala_cama',
+        label: 'Sala / cama',
+        pattern: TEXT_PATTERNS.textNumberSpace,
+        message: 'solo se permiten letras, números y espacios.'
+      }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingCitacion) {
         await updateCitacion(editingCitacion.id, formData);
@@ -122,11 +166,7 @@ const CitacionManagement = () => {
       console.error('Error saving citacion:', error);
       let errorMsg = 'Ocurrió un error al guardar la citación. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -149,7 +189,7 @@ const CitacionManagement = () => {
   };
 
   const filteredCitaciones = citaciones.filter(c => 
-    (c.codigo_donante?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (c.codigos_donante || []).some(cd => cd.codigo.toLowerCase().includes(search.toLowerCase())) ||
     (c.nro_solicitud?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (c.tipo?.toLowerCase() || '').includes(search.toLowerCase()) ||
     (c.servicio_nombre?.toLowerCase() || '').includes(search.toLowerCase())
@@ -197,9 +237,10 @@ const CitacionManagement = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-sm font-medium text-gray-500">
-                  <th className="px-6 py-4">Cód. Donante</th>
-                  <th className="px-6 py-4">N° Solicitud</th>
+                  <th className="px-6 py-4">Códigos Donante</th>
+                  <th className="px-6 py-4">Paciente / N° Solicitud</th>
                   <th className="px-6 py-4">Grupo / Tipo</th>
+                  <th className="px-6 py-4">Balance / Registro</th>
                   <th className="px-6 py-4">Fecha / Hora</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
@@ -222,12 +263,19 @@ const CitacionManagement = () => {
                   </tr>
                 ) : (
                   filteredCitaciones.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group">
-                      <td className="px-6 py-4 font-mono font-bold text-slate-700">
-                        {c.codigo_donante}
+                    <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(c)}>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {(c.codigos_donante || []).map(cd => (
+                            <span key={cd.id || cd.codigo} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-mono font-bold border border-indigo-100">
+                              {cd.codigo}
+                            </span>
+                          ))}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 font-mono text-indigo-600">
-                        {c.nro_solicitud}
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900">{c.paciente_nombre || 'Paciente no registrado'}</div>
+                        <div className="text-xs font-mono text-indigo-600 mt-0.5">Sol: {c.nro_solicitud}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
@@ -236,11 +284,26 @@ const CitacionManagement = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full w-fit ${c.bolsas_a_favor > 0 ? 'bg-green-100 text-green-700' : c.bolsas_a_favor < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                            {c.bolsas_a_favor > 0 ? '+' : ''}{c.bolsas_a_favor} a favor
+                          </span>
+                          <span className="text-xs text-gray-500">Por: <span className="font-medium text-gray-700">{c.created_by_name || 'Sistema'}</span></span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
                         <div className="text-gray-900">{c.fecha}</div>
                         <div className="text-xs text-gray-500">{c.hora?.substring(0, 5)} • {c.servicio_nombre}</div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => handleOpenDetails(c)}
+                            className="p-1.5 text-gray-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
+                            title="Ver Detalles"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           <button 
                             onClick={() => handleOpenModal(c)}
                             className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
@@ -301,17 +364,50 @@ const CitacionManagement = () => {
                   </select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Código de Donante *</label>
-                  <input 
-                    type="text" 
-                    required
-                    pattern="[A-Za-z0-9]+"
-                    value={formData.codigo_donante}
-                    onChange={(e) => setFormData({...formData, codigo_donante: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none uppercase"
-                    placeholder="Ej: DON123"
-                  />
+                <div className="space-y-1.5 md:col-span-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-gray-700">Códigos de Donante *</label>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({...formData, codigos_donante: [...formData.codigos_donante, {codigo: ''}]})}
+                      className="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                    >
+                      <Plus className="w-4 h-4" /> Añadir Código
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {formData.codigos_donante.map((item, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input 
+                          type="text" 
+                          required
+                          pattern="[A-Za-z0-9]+"
+                          maxLength={50}
+                          title="Solo se permiten letras y números"
+                          value={item.codigo}
+                          onChange={(e) => {
+                            const newCodigos = [...formData.codigos_donante];
+                            newCodigos[index].codigo = keepChars(e.target.value, 'alphanumeric').toUpperCase();
+                            setFormData({...formData, codigos_donante: newCodigos});
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none uppercase font-mono"
+                          placeholder={`Ej: DON${index + 1}23`}
+                        />
+                        {formData.codigos_donante.length > 1 && (
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              const newCodigos = formData.codigos_donante.filter((_, i) => i !== index);
+                              setFormData({...formData, codigos_donante: newCodigos});
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
@@ -387,7 +483,8 @@ const CitacionManagement = () => {
                     type="number" 
                     required min="1" max="10" step="1" inputMode="numeric"
                     value={formData.cantidad}
-                    onChange={(e) => setFormData({...formData, cantidad: e.target.value})}
+                    onKeyDown={preventInvalidNumberKeys}
+                    onChange={(e) => setFormData({...formData, cantidad: onlyPositiveInteger(e.target.value, 10)})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
                   />
                 </div>
@@ -397,8 +494,9 @@ const CitacionManagement = () => {
                   <input 
                     type="text" 
                     pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 ]*"
+                    title="Solo se permiten letras, números y espacios"
                     value={formData.sala_cama}
-                    onChange={(e) => setFormData({...formData, sala_cama: e.target.value})}
+                    onChange={(e) => setFormData({...formData, sala_cama: keepChars(e.target.value, 'textNumberSpace')})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none"
                     placeholder="Ej: Sala 3, Cama 12"
                   />
@@ -421,6 +519,93 @@ const CitacionManagement = () => {
                 className="px-5 py-2.5 text-sm font-medium text-white bg-orange-500 rounded-xl hover:bg-orange-600 transition-colors shadow-sm shadow-orange-500/20"
               >
                 {editingCitacion ? 'Guardar Cambios' : 'Registrar Citación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {isDetailsModalOpen && viewingCitacion && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-cyan-50/50">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <CalendarClock className="text-cyan-600 w-5 h-5" />
+                Detalles de Citación
+              </h2>
+              <button
+                onClick={handleCloseDetailsModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Paciente</p>
+                    <p className="font-bold text-lg text-indigo-700">{viewingCitacion.paciente_nombre || 'Desconocido'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Nro. Solicitud Asociada</p>
+                    <p className="font-mono text-gray-900 font-semibold">{viewingCitacion.nro_solicitud || 'No especificado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Fecha y Hora</p>
+                    <p className="font-semibold text-gray-900">{viewingCitacion.fecha} a las {viewingCitacion.hora?.substring(0,5)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Servicio / Sala y Cama</p>
+                    <p className="font-semibold text-gray-900">{viewingCitacion.servicio_nombre || 'No especificado'} - {viewingCitacion.sala_cama || 'Sin especificar'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Tipo de Donación</p>
+                    <p className="font-semibold text-gray-900">{HEMOCOMPONENTES.find(item => item.value === viewingCitacion.tipo)?.label || viewingCitacion.tipo}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Grupo y Factor / Cantidad</p>
+                    <p className="font-semibold text-red-700">{viewingCitacion.grupo_factor}</p>
+                    <p className="text-sm text-gray-600">{viewingCitacion.cantidad} unidad(es)</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500 font-medium mb-2">Códigos de Donante ({viewingCitacion.codigos_donante?.length || 0})</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(viewingCitacion.codigos_donante || []).map(cd => (
+                        <div key={cd.id || cd.codigo} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-mono font-bold border border-indigo-100">
+                          {cd.codigo}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Balance de Bolsas</p>
+                    <span className={`text-sm font-bold px-3 py-1 rounded-full w-fit flex items-center gap-1 ${viewingCitacion.bolsas_a_favor > 0 ? 'bg-green-100 text-green-700' : viewingCitacion.bolsas_a_favor < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {viewingCitacion.bolsas_a_favor > 0 ? '+' : ''}{viewingCitacion.bolsas_a_favor} a favor
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Auditoría de Registro</p>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-sm text-gray-700">
+                        <span className="text-gray-500 text-xs">Creado por:</span> <span className="font-medium">{viewingCitacion.created_by_name || 'Sistema'}</span>
+                      </p>
+                      {viewingCitacion.updated_by_name && (
+                        <p className="text-sm text-gray-700">
+                          <span className="text-gray-500 text-xs">Última edición por:</span> <span className="font-medium">{viewingCitacion.updated_by_name}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button onClick={handleCloseDetailsModal} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
+                Cerrar
               </button>
             </div>
           </div>

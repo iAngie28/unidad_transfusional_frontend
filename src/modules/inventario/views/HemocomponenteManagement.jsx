@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { getHemocomponentes, createHemocomponente, updateHemocomponente, deleteHemocomponente } from '../services/hemocomponenteService';
 import { getTrazabilidades } from '../services/trazabilidadService';
 import { Droplet, Plus, Edit2, Trash2, Search, X, Package, Eye, ListTree, Activity } from 'lucide-react';
+import {
+  TEXT_PATTERNS,
+  formatBackendErrors,
+  keepChars,
+  showValidationAlert,
+  validateFormData
+} from '../../../utils/formValidation';
 
 const BOLIVIA_TIME_ZONE = 'America/La_Paz';
 
@@ -150,6 +157,34 @@ const HemocomponenteManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      {
+        field: 'nro_bolsa',
+        label: 'N° de bolsa',
+        required: true,
+        maxLength: 50,
+        pattern: TEXT_PATTERNS.identifier,
+        message: 'solo se permiten letras, números y guiones.'
+      },
+      {
+        field: 'nro_tubuladura',
+        label: 'N° tubuladura',
+        required: true,
+        maxLength: 50,
+        pattern: TEXT_PATTERNS.identifier,
+        message: 'solo se permiten letras, números y guiones.'
+      },
+      { field: 'tipo', label: 'Componente', required: true },
+      { field: 'grupo_sanguineo', label: 'Grupo sanguíneo', required: true },
+      { field: 'estado', label: 'Estado físico', required: true },
+      { field: 'fecha_ingreso', label: 'Fecha/hora ingreso', required: true },
+      { field: 'fecha_vencimiento', label: 'Fecha/hora vencimiento', required: true }
+    ]);
+    if (formData.fecha_ingreso && formData.fecha_vencimiento && formData.fecha_vencimiento <= formData.fecha_ingreso) {
+      errors.push('Fecha/hora vencimiento: debe ser posterior a la fecha de ingreso.');
+    }
+    if (showValidationAlert(errors)) return;
+
     try {
       const payload = {
         ...formData,
@@ -168,11 +203,7 @@ const HemocomponenteManagement = () => {
       console.error('Error saving hemocomponente:', error);
       let errorMsg = 'Ocurrió un error al guardar el hemocomponente. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -358,7 +389,7 @@ const HemocomponenteManagement = () => {
                     pattern="[A-Za-z0-9-]+"
                     title="Solo se permiten letras, números y guiones"
                     value={formData.nro_bolsa}
-                    onChange={(e) => setFormData({...formData, nro_bolsa: e.target.value.toUpperCase()})}
+                    onChange={(e) => setFormData({...formData, nro_bolsa: keepChars(e.target.value, 'identifier').toUpperCase()})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none disabled:bg-gray-100 disabled:text-gray-500 uppercase"
                     placeholder="Ej: B-1002"
                   />
@@ -373,7 +404,7 @@ const HemocomponenteManagement = () => {
                     pattern="[A-Za-z0-9-]+"
                     title="Solo se permiten letras, números y guiones"
                     value={formData.nro_tubuladura}
-                    onChange={(e) => setFormData({...formData, nro_tubuladura: e.target.value.toUpperCase()})}
+                    onChange={(e) => setFormData({...formData, nro_tubuladura: keepChars(e.target.value, 'identifier').toUpperCase()})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none uppercase"
                     placeholder="Ej: TUB-45"
                   />

@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { getPagos, createPago, updatePago, deletePago } from '../services/pagoService';
 import { getCitaciones } from '../services/citacionService';
-import { CreditCard, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+import { CreditCard, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
+import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const PagoManagement = () => {
   const [pagos, setPagos] = useState([]);
   const [citaciones, setCitaciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [editingPago, setEditingPago] = useState(null);
+  const [viewingPago, setViewingPago] = useState(null);
   const [search, setSearch] = useState('');
   
   const [formData, setFormData] = useState({
@@ -61,8 +64,23 @@ const PagoManagement = () => {
     setEditingPago(null);
   };
 
+  const handleOpenDetails = (pago) => {
+    setViewingPago(pago);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleCloseDetailsModal = () => {
+    setIsDetailsModalOpen(false);
+    setViewingPago(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'estado', label: 'Estado del pago', required: true }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingPago) {
         await updatePago(editingPago.id, formData);
@@ -75,11 +93,7 @@ const PagoManagement = () => {
       console.error('Error saving pago:', error);
       let errorMsg = 'Ocurrió un error al guardar el pago. Verifica los datos.';
       if (error.response && error.response.data) {
-        const backendErrors = error.response.data;
-        const errorList = Object.entries(backendErrors)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('\n');
-        errorMsg += '\n\nDetalles:\n' + errorList;
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
       }
       alert(errorMsg);
     }
@@ -151,7 +165,7 @@ const PagoManagement = () => {
                   <th className="px-6 py-4">ID Pago</th>
                   <th className="px-6 py-4">Solicitud / Citación</th>
                   <th className="px-6 py-4">Seguro (SUS)</th>
-                  <th className="px-6 py-4">Estado</th>
+                  <th className="px-6 py-4">Estado / Registro</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -172,33 +186,43 @@ const PagoManagement = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredPagos.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50/50 transition-colors group">
+                  filteredPagos.map((pago) => (
+                    <tr key={pago.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(pago)}>
                       <td className="px-6 py-4 font-mono font-medium text-gray-600">
-                        #{p.id}
+                        #{pago.id}
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-medium text-indigo-600">
-                          {p.nro_solicitud || 'N/A'}
+                          {pago.nro_solicitud || 'N/A'}
                         </div>
                         <div className="text-xs text-gray-500">
-                          Citación: {p.id_citacion ? `#${p.id_citacion}` : 'Ninguna'}
+                          Citación: {pago.id_citacion ? `#${pago.id_citacion}` : 'Ninguna'}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {p.es_sus ? (
+                        {pago.es_sus ? (
                           <span className="text-green-600 font-medium">Sí (SUS)</span>
                         ) : (
                           <span className="text-gray-500 font-medium">No (Particular)</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        {formatEstado(p.estado)}
+                        <div className="flex flex-col gap-1 items-start">
+                          {formatEstado(pago.estado)}
+                          <span className="text-xs text-gray-500 mt-1">Por: <span className="font-medium text-gray-700">{pago.created_by_name || 'Sistema'}</span></span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
-                            onClick={() => handleOpenModal(p)}
+                            onClick={() => handleOpenDetails(pago)}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            title="Ver Detalles"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleOpenModal(pago)}
                             className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Editar"
                           >
@@ -224,7 +248,7 @@ const PagoManagement = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <CreditCard className="text-green-600 w-5 h-5" />
@@ -303,6 +327,68 @@ const PagoManagement = () => {
                 className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors shadow-sm shadow-green-600/20"
               >
                 {editingPago ? 'Guardar Cambios' : 'Registrar Pago'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {isDetailsModalOpen && viewingPago && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-rose-50/50">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <CreditCard className="text-rose-600 w-5 h-5" />
+                Detalles del Pago
+              </h2>
+              <button
+                onClick={handleCloseDetailsModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 grid gap-6">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Estado del Pago</p>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    viewingPago.estado === 'PAGADO' ? 'bg-green-100 text-green-800' :
+                    viewingPago.estado === 'EXENTO' ? 'bg-blue-100 text-blue-800' :
+                    'bg-amber-100 text-amber-800'
+                  }`}>
+                    {viewingPago.estado}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">¿Cobertura SUS?</p>
+                  <p className="font-semibold text-gray-900">{viewingPago.es_sus ? 'Sí' : 'No'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Citación Asociada (Nro. Solicitud)</p>
+                  <p className="font-mono text-gray-900">{viewingPago.citacion_nro_solicitud || 'No asociado'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Auditoría de Registro</p>
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-sm text-gray-700">
+                      <span className="text-gray-500 text-xs">Creado por:</span> <span className="font-medium">{viewingPago.created_by_name || 'Sistema'}</span>
+                    </p>
+                    {viewingPago.updated_by_name && (
+                      <p className="text-sm text-gray-700">
+                        <span className="text-gray-500 text-xs">Última edición por:</span> <span className="font-medium">{viewingPago.updated_by_name}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button onClick={handleCloseDetailsModal} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
+                Cerrar
               </button>
             </div>
           </div>

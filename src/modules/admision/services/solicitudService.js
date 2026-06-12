@@ -26,3 +26,8 @@ export const deleteSolicitud = async (id) => {
   const response = await api.delete(`${SOLICITUD_URL}${id}/`);
   return response.data;
 };
+
+export const archivarSolicitud = async (id) => {
+  const response = await api.patch(`${SOLICITUD_URL}${id}/archivar/`);
+  return response.data;
+};

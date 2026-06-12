@@ -1,13 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { getRoles, createRole, updateRole, deleteRole } from '../services/roleService';
-import { Shield, Plus, Edit2, Trash2, Search, X, CheckSquare, Square } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getRoles, createRole, updateRole, deleteRole, getPermisos } from '../services/roleService';
+import { Shield, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
+import { showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const RoleManagement = () => {
   const [roles, setRoles] = useState([]);
+  const [permisosList, setPermisosList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
   const [search, setSearch] = useState('');
+  const [selectedModulo, setSelectedModulo] = useState('');
+  
+  const modulos = useMemo(() => {
+    return [...new Set(permisosList.map(p => p.modulo))].filter(Boolean).sort();
+  }, [permisosList]);
+
+  useEffect(() => {
+    if (modulos.length > 0 && !selectedModulo) {
+      setSelectedModulo(modulos[0]);
+    }
+  }, [modulos, selectedModulo]);
+
+  const formatPermissionName = (name) => {
+    return name
+      .replace('Can add ', 'Añadir ')
+      .replace('Can change ', 'Editar ')
+      .replace('Can delete ', 'Eliminar ')
+      .replace('Can view ', 'Ver ');
+  };
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -23,10 +44,14 @@ const RoleManagement = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const data = await getRoles();
-      setRoles(data.results || data || []);
+      const [rolesData, permisosData] = await Promise.all([
+        getRoles(),
+        getPermisos()
+      ]);
+      setRoles(rolesData.results || rolesData || []);
+      setPermisosList(permisosData.results || permisosData || []);
     } catch (error) {
-      console.error('Error fetching roles:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
@@ -58,6 +83,12 @@ const RoleManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateFormData(formData, [
+      { field: 'nombre', label: 'Nombre del rol', required: true, maxLength: 100 },
+      { field: 'descripcion', label: 'Descripción', maxLength: 255 }
+    ]);
+    if (showValidationAlert(errors)) return;
+
     try {
       if (editingRole) {
         await updateRole(editingRole.id, formData);
@@ -193,11 +224,27 @@ const RoleManagement = () => {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h2 className="text-xl font-bold text-gray-900">
-                {editingRole ? 'Editar Rol' : 'Nuevo Rol'}
-              </h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-gray-900">
+                  {editingRole ? 'Editar Rol' : 'Nuevo Rol'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allPerms = permisosList.map(p => p.id);
+                    if (formData.permisos.length === allPerms.length) {
+                      setFormData({ ...formData, permisos: [] });
+                    } else {
+                      setFormData({ ...formData, permisos: allPerms });
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
+                >
+                  Seleccionar Todo el Sistema
+                </button>
+              </div>
               <button 
                 onClick={handleCloseModal}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
@@ -206,30 +253,112 @@ const RoleManagement = () => {
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto custom-scrollbar">
-              <form id="roleForm" onSubmit={handleSubmit} className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Nombre del Rol *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    placeholder="ej: BIOQUIMICO"
-                  />
-                  <p className="text-xs text-gray-500">Se recomienda usar MAYÚSCULAS para identificadores internos.</p>
+            <div className="p-6 overflow-hidden flex-1 flex flex-col">
+              <form id="roleForm" onSubmit={handleSubmit} className="flex flex-col h-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700">Nombre del Rol *</label>
+                    <input 
+                      type="text" 
+                      required
+                      maxLength={100}
+                      value={formData.nombre}
+                      onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                      placeholder="ej: BIOQUIMICO"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700">Descripción</label>
+                    <textarea 
+                      rows={2}
+                      maxLength={255}
+                      value={formData.descripcion}
+                      onChange={(e) => setFormData({...formData, descripcion: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none"
+                      placeholder="Describe los permisos y responsabilidades..."
+                    />
+                  </div>
                 </div>
-                
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-700">Descripción</label>
-                  <textarea 
-                    rows={3}
-                    value={formData.descripcion}
-                    onChange={(e) => setFormData({...formData, descripcion: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none"
-                    placeholder="Describe los permisos y responsabilidades de este rol..."
-                  />
+
+                <div className="flex flex-col md:flex-row gap-4 border-t border-gray-100 pt-4 flex-1 min-h-0">
+                  {/* Sidebar Módulos */}
+                  <div className="w-full md:w-1/3 lg:w-1/4 border-r border-gray-100 pr-4 flex flex-col min-h-0">
+                    <label className="text-sm font-medium text-gray-700 mb-2">Módulos del Sistema</label>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-2">
+                      {modulos.map(mod => {
+                        const modulePerms = permisosList.filter(p => p.modulo === mod);
+                        const selectedCount = modulePerms.filter(p => formData.permisos.includes(p.id)).length;
+                        return (
+                          <button
+                            key={mod}
+                            type="button"
+                            onClick={() => setSelectedModulo(mod)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex justify-between items-center ${
+                              selectedModulo === mod 
+                                ? 'bg-indigo-50 text-indigo-700' 
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="capitalize">{mod.replace('_', ' ')}</span>
+                            {selectedCount > 0 && (
+                              <span className="bg-indigo-100 text-indigo-600 text-xs px-2 py-0.5 rounded-full">
+                                {selectedCount}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Panel Permisos */}
+                  <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col min-h-0">
+                    <label className="text-sm font-medium text-gray-700 mb-2 capitalize flex justify-between items-center">
+                      <span>Permisos en {selectedModulo?.replace('_', ' ')}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const modulePerms = permisosList.filter(p => p.modulo === selectedModulo).map(p => p.id);
+                          const allSelected = modulePerms.every(id => formData.permisos.includes(id));
+                          if (allSelected) {
+                            setFormData({ ...formData, permisos: formData.permisos.filter(id => !modulePerms.includes(id)) });
+                          } else {
+                            const newPerms = [...new Set([...formData.permisos, ...modulePerms])];
+                            setFormData({ ...formData, permisos: newPerms });
+                          }
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                      >
+                        Seleccionar / Deseleccionar Todo
+                      </button>
+                    </label>
+                    <div className="flex-1 overflow-y-auto p-2 bg-gray-50/50 rounded-xl border border-gray-200 custom-scrollbar">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                        {permisosList.filter(p => p.modulo === selectedModulo).map(permiso => (
+                          <label key={permiso.id} className="flex items-start gap-3 cursor-pointer hover:bg-white p-2.5 rounded-lg transition-colors border border-transparent hover:border-gray-200 hover:shadow-sm">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 transition-colors"
+                              checked={formData.permisos.includes(permiso.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setFormData({ ...formData, permisos: [...formData.permisos, permiso.id] });
+                                } else {
+                                  setFormData({ ...formData, permisos: formData.permisos.filter(id => id !== permiso.id) });
+                                }
+                              }}
+                            />
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-900">{formatPermissionName(permiso.name)}</span>
+                              <span className="text-xs text-gray-500 font-mono mt-0.5">{permiso.codename}</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </form>
             </div>
