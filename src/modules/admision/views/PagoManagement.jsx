@@ -229,7 +229,7 @@ const PagoManagement = () => {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleDelete(p.id)}
+                            onClick={() => handleDelete(pago.id)}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Eliminar"
                           >
