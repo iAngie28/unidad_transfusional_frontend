@@ -741,7 +741,7 @@ const SolicitudManagement = () => {
       {/* Details Modal */}
       {isDetailsModalOpen && viewingSolicitud && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[95vh]">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <FileText className="text-indigo-600 w-5 h-5" />
