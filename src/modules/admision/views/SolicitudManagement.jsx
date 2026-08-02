@@ -390,6 +390,13 @@ const SolicitudManagement = () => {
                       </td>
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleOpenDetails(sol); }}
+                            className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="Ver Detalles"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           {sol.estado === 'PENDIENTE' && (
                             <button 
                               onClick={() => handleArchivar(sol.nro)}
