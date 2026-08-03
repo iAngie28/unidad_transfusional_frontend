@@ -226,13 +226,13 @@ const PagoManagement = () => {
                               e.stopPropagation();
                               navigate('/citaciones', { state: { openDetailsId: pago.id_citacion } });
                             }
-                          }}>Cit: {pago.id_citacion ? `#${pago.id_citacion}` : '-'}</span>
+                          }}>Citación vinculada</span>
                           <span className="hover:underline cursor-pointer" onClick={(e) => {
                             if(pago.id_transfusion) {
                               e.stopPropagation();
                               navigate('/transfusiones', { state: { openDetailsId: pago.id_transfusion } });
                             }
-                          }}>Trf: {pago.id_transfusion ? `#${pago.id_transfusion}` : '-'}</span>
+                          }}>Transfusión vinculada</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -407,12 +407,12 @@ const PagoManagement = () => {
                   <p className="font-mono text-gray-900">
                     {viewingPago.id_citacion && (
                       <span className="text-indigo-600 hover:underline cursor-pointer mr-2" onClick={() => navigate('/citaciones', { state: { openDetailsId: viewingPago.id_citacion } })}>
-                        Citación #{viewingPago.id_citacion}
+                        Ver Citación
                       </span>
                     )}
                     {viewingPago.id_transfusion && (
                       <span className="text-indigo-600 hover:underline cursor-pointer" onClick={() => navigate('/transfusiones', { state: { openDetailsId: viewingPago.id_transfusion } })}>
-                        Transfusión #{viewingPago.id_transfusion}
+                        Ver Transfusión
                       </span>
                     )}
                     {!viewingPago.id_citacion && !viewingPago.id_transfusion && 'No asociado'}

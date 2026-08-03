@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getConsentimientos, createConsentimiento, updateConsentimiento, deleteConsentimiento } from '../services/consentimientoService';
 import { getSolicitudes } from '../services/solicitudService';
 import { getServicios } from '../services/servicioService';
@@ -37,6 +37,7 @@ const initialConsentimientoForm = () => ({
 
 const ConsentimientoManagement = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [consentimientos, setConsentimientos] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
   const [servicios, setServicios] = useState([]);
@@ -61,9 +62,18 @@ const ConsentimientoManagement = () => {
         getSolicitudes(),
         getServicios()
       ]);
-      setConsentimientos(consentimientosData.results || consentimientosData || []);
+      const consentimientosList = consentimientosData.results || consentimientosData || [];
+      setConsentimientos(consentimientosList);
       setSolicitudes(solicitudesData.results || solicitudesData || []);
       setServicios(serviciosData.results || serviciosData || []);
+      
+      if (location.state?.openDetailsId) {
+        const itemToOpen = consentimientosList.find(c => String(c.id) === String(location.state.openDetailsId));
+        if (itemToOpen) {
+          handleOpenDetails(itemToOpen);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {

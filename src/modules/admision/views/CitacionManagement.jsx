@@ -59,6 +59,7 @@ const getInitialCitacionForm = (userId = '') => ({
 const CitacionManagement = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const boliviaNow = getBoliviaNow();
   const [citaciones, setCitaciones] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
@@ -84,9 +85,18 @@ const CitacionManagement = () => {
         getSolicitudes(),
         getServicios()
       ]);
-      setCitaciones(citacionesData.results || citacionesData || []);
+      const citacionesList = citacionesData.results || citacionesData || [];
+      setCitaciones(citacionesList);
       setSolicitudes(solicitudesData.results || solicitudesData || []);
       setServicios(serviciosData.results || serviciosData || []);
+      
+      if (location.state?.openDetailsId) {
+        const itemToOpen = citacionesList.find(c => String(c.id) === String(location.state.openDetailsId));
+        if (itemToOpen) {
+          handleOpenDetails(itemToOpen);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
