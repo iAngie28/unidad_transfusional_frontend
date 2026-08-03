@@ -4,6 +4,7 @@ import { getSolicitudes } from '../services/solicitudService';
 import { getServicios } from '../services/servicioService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Edit2, Trash2, Search, X, CalendarClock, Eye } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   TEXT_PATTERNS,
   formatBackendErrors,
@@ -57,6 +58,7 @@ const getInitialCitacionForm = (userId = '') => ({
 
 const CitacionManagement = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const boliviaNow = getBoliviaNow();
   const [citaciones, setCitaciones] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
@@ -274,8 +276,28 @@ const CitacionManagement = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-bold text-gray-900">{c.paciente_nombre || 'Paciente no registrado'}</div>
-                        <div className="text-xs font-mono text-indigo-600 mt-0.5">Sol: {c.nro_solicitud}</div>
+                        {c.paciente_ci ? (
+                          <div 
+                            className="font-bold text-indigo-700 hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/pacientes', { state: { openDetailsCi: c.paciente_ci } });
+                            }}
+                          >
+                            {c.paciente_nombre}
+                          </div>
+                        ) : (
+                          <div className="font-bold text-gray-900">{c.paciente_nombre || 'Paciente no registrado'}</div>
+                        )}
+                        <div 
+                          className="text-xs font-mono text-indigo-600 mt-0.5 hover:underline cursor-pointer inline-block"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/solicitudes', { state: { openDetailsId: c.nro_solicitud } });
+                          }}
+                        >
+                          Sol: {c.nro_solicitud}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
@@ -547,11 +569,29 @@ const CitacionManagement = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Paciente</p>
-                    <p className="font-bold text-lg text-indigo-700">{viewingCitacion.paciente_nombre || 'Desconocido'}</p>
+                    {viewingCitacion.paciente_ci ? (
+                      <p 
+                        className="font-bold text-lg text-indigo-700 hover:underline cursor-pointer"
+                        onClick={() => navigate('/pacientes', { state: { openDetailsCi: viewingCitacion.paciente_ci } })}
+                      >
+                        {viewingCitacion.paciente_nombre}
+                      </p>
+                    ) : (
+                      <p className="font-bold text-lg text-indigo-700">{viewingCitacion.paciente_nombre || 'Desconocido'}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Nro. Solicitud Asociada</p>
-                    <p className="font-mono text-gray-900 font-semibold">{viewingCitacion.nro_solicitud || 'No especificado'}</p>
+                    {viewingCitacion.nro_solicitud ? (
+                      <p 
+                        className="font-mono text-indigo-700 font-semibold hover:underline cursor-pointer"
+                        onClick={() => navigate('/solicitudes', { state: { openDetailsId: viewingCitacion.nro_solicitud } })}
+                      >
+                        {viewingCitacion.nro_solicitud}
+                      </p>
+                    ) : (
+                      <p className="font-mono text-gray-900 font-semibold">No especificado</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Fecha y Hora</p>

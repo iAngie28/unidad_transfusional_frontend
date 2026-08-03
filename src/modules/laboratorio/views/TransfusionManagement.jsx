@@ -255,7 +255,17 @@ const TransfusionManagement = () => {
               {filtered.map(t => (
                 <tr key={t.id} className="hover:bg-gray-50 cursor-pointer group" onClick={() => handleOpenView(t)}>
                   <td className="px-6 py-4 font-mono font-bold">{t.nro_bolsa}</td>
-                  <td className="px-6 py-4 font-semibold text-indigo-700">{t.paciente_nombre}</td>
+                  <td className="px-6 py-4 font-semibold text-indigo-700">
+                    <span 
+                      className="hover:underline cursor-pointer inline-block"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/pacientes', { state: { openDetailsCi: t.ci_paciente } });
+                      }}
+                    >
+                      {t.paciente_nombre}
+                    </span>
+                  </td>
                   <td className="px-6 py-4">{t.servicio_nombre}</td>
                   <td className="px-6 py-4 text-gray-600">
                     <div className="flex flex-col text-xs font-medium">
@@ -294,7 +304,15 @@ const TransfusionManagement = () => {
                 <div className="col-span-2">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Información General</h3>
                   <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <div><p className="text-xs text-gray-500">Paciente</p><p className="font-bold text-gray-900">{viewingTransfusion.paciente_nombre} ({viewingTransfusion.ci_paciente})</p></div>
+                    <div>
+                      <p className="text-xs text-gray-500">Paciente</p>
+                      <p 
+                        className="font-bold text-indigo-700 hover:underline cursor-pointer inline-block"
+                        onClick={() => navigate('/pacientes', { state: { openDetailsCi: viewingTransfusion.ci_paciente } })}
+                      >
+                        {viewingTransfusion.paciente_nombre} ({viewingTransfusion.ci_paciente})
+                      </p>
+                    </div>
                     <div><p className="text-xs text-gray-500">Bolsa</p><p className="font-bold text-gray-900">{viewingTransfusion.nro_bolsa}</p></div>
                     <div><p className="text-xs text-gray-500">Servicio</p><p className="font-bold text-gray-900">{viewingTransfusion.servicio_nombre}</p></div>
                     <div><p className="text-xs text-gray-500">Grupo Cabecera</p><p className="font-bold text-gray-900">{viewingTransfusion.grupo_cabecera_h}</p></div>

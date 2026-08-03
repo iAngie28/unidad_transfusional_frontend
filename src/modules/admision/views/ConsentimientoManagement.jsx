@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getConsentimientos, createConsentimiento, updateConsentimiento, deleteConsentimiento } from '../services/consentimientoService';
 import { getSolicitudes } from '../services/solicitudService';
 import { getServicios } from '../services/servicioService';
@@ -35,6 +36,7 @@ const initialConsentimientoForm = () => ({
 });
 
 const ConsentimientoManagement = () => {
+  const navigate = useNavigate();
   const [consentimientos, setConsentimientos] = useState([]);
   const [solicitudes, setSolicitudes] = useState([]);
   const [servicios, setServicios] = useState([]);
@@ -210,8 +212,9 @@ const ConsentimientoManagement = () => {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-sm font-medium text-gray-500">
-                  <th className="px-6 py-4">N° Solicitud</th>
-                  <th className="px-6 py-4">Familiar Responsable</th>
+                  <th className="px-6 py-4">Nro. Solicitud</th>
+                  <th className="px-6 py-4">Paciente (Receptor)</th>
+                  <th className="px-6 py-4">Familiar / Responsable</th>
                   <th className="px-6 py-4">CI / Teléfono</th>
                   <th className="px-6 py-4">Fecha / Servicio / Registro</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
@@ -237,7 +240,30 @@ const ConsentimientoManagement = () => {
                   filteredConsentimientos.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(c)}>
                       <td className="px-6 py-4 font-mono font-medium text-indigo-600">
-                        {c.nro_solicitud}
+                        <div 
+                          className="hover:underline cursor-pointer inline-block"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/solicitudes', { state: { openDetailsId: c.nro_solicitud } });
+                          }}
+                        >
+                          {c.nro_solicitud}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {c.paciente_ci ? (
+                          <div 
+                            className="font-bold text-indigo-700 hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/pacientes', { state: { openDetailsCi: c.paciente_ci } });
+                            }}
+                          >
+                            {c.paciente_nombre}
+                          </div>
+                        ) : (
+                          <div className="font-bold text-gray-900">{c.paciente_nombre || 'No registrado'}</div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-semibold text-gray-900">
@@ -466,7 +492,29 @@ const ConsentimientoManagement = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Nro. Solicitud Asociada</p>
-                    <p className="font-mono text-gray-900">{viewingConsentimiento.nro_solicitud || 'No especificado'}</p>
+                    {viewingConsentimiento.nro_solicitud ? (
+                      <p 
+                        className="font-mono text-indigo-700 font-semibold hover:underline cursor-pointer"
+                        onClick={() => navigate('/solicitudes', { state: { openDetailsId: viewingConsentimiento.nro_solicitud } })}
+                      >
+                        {viewingConsentimiento.nro_solicitud}
+                      </p>
+                    ) : (
+                      <p className="font-mono text-gray-900 font-semibold">No especificado</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Paciente (Receptor)</p>
+                    {viewingConsentimiento.paciente_ci ? (
+                      <p 
+                        className="font-bold text-lg text-indigo-700 hover:underline cursor-pointer"
+                        onClick={() => navigate('/pacientes', { state: { openDetailsCi: viewingConsentimiento.paciente_ci } })}
+                      >
+                        {viewingConsentimiento.paciente_nombre}
+                      </p>
+                    ) : (
+                      <p className="font-bold text-lg text-gray-900">{viewingConsentimiento.paciente_nombre || 'No registrado'}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Fecha</p>

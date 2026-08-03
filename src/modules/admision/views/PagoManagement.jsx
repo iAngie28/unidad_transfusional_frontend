@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getPagos, createPago, updatePago, deletePago } from '../services/pagoService';
 import { getCitaciones } from '../services/citacionService';
 import { CreditCard, Plus, Edit2, Trash2, Search, X, Eye } from 'lucide-react';
 import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
 const PagoManagement = () => {
+  const navigate = useNavigate();
   const [pagos, setPagos] = useState([]);
   const [citaciones, setCitaciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +165,8 @@ const PagoManagement = () => {
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-sm font-medium text-gray-500">
                   <th className="px-6 py-4">ID Pago</th>
-                  <th className="px-6 py-4">Solicitud / Citación</th>
+                  <th className="px-6 py-4">Paciente</th>
+                  <th className="px-6 py-4">Nro. Solicitud / Citación</th>
                   <th className="px-6 py-4">Seguro (SUS)</th>
                   <th className="px-6 py-4">Estado / Registro</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
@@ -192,11 +195,44 @@ const PagoManagement = () => {
                         #{pago.id}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-indigo-600">
+                        {pago.paciente_ci ? (
+                          <div 
+                            className="font-bold text-indigo-700 hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/pacientes', { state: { openDetailsCi: pago.paciente_ci } });
+                            }}
+                          >
+                            {pago.paciente_nombre}
+                          </div>
+                        ) : (
+                          <div className="font-bold text-gray-900">{pago.paciente_nombre || 'No registrado'}</div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-indigo-600 hover:underline cursor-pointer inline-block"
+                            onClick={(e) => {
+                              if(pago.nro_solicitud) {
+                                e.stopPropagation();
+                                navigate('/solicitudes', { state: { openDetailsId: pago.nro_solicitud } });
+                              }
+                            }}
+                        >
                           {pago.nro_solicitud || 'N/A'}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          Citación: {pago.id_citacion ? `#${pago.id_citacion}` : 'Ninguna'}
+                        <div className="text-xs text-gray-500 flex gap-2">
+                          <span className="hover:underline cursor-pointer" onClick={(e) => {
+                            if(pago.id_citacion) {
+                              e.stopPropagation();
+                              navigate('/citaciones', { state: { openDetailsId: pago.id_citacion } });
+                            }
+                          }}>Cit: {pago.id_citacion ? `#${pago.id_citacion}` : '-'}</span>
+                          <span className="hover:underline cursor-pointer" onClick={(e) => {
+                            if(pago.id_transfusion) {
+                              e.stopPropagation();
+                              navigate('/transfusiones', { state: { openDetailsId: pago.id_transfusion } });
+                            }
+                          }}>Trf: {pago.id_transfusion ? `#${pago.id_transfusion}` : '-'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -367,8 +403,33 @@ const PagoManagement = () => {
                   <p className="font-semibold text-gray-900">{viewingPago.es_sus ? 'Sí' : 'No'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 font-medium mb-1">Citación Asociada (Nro. Solicitud)</p>
-                  <p className="font-mono text-gray-900">{viewingPago.citacion_nro_solicitud || 'No asociado'}</p>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Citación / Transfusión Asociada</p>
+                  <p className="font-mono text-gray-900">
+                    {viewingPago.id_citacion && (
+                      <span className="text-indigo-600 hover:underline cursor-pointer mr-2" onClick={() => navigate('/citaciones', { state: { openDetailsId: viewingPago.id_citacion } })}>
+                        Citación #{viewingPago.id_citacion}
+                      </span>
+                    )}
+                    {viewingPago.id_transfusion && (
+                      <span className="text-indigo-600 hover:underline cursor-pointer" onClick={() => navigate('/transfusiones', { state: { openDetailsId: viewingPago.id_transfusion } })}>
+                        Transfusión #{viewingPago.id_transfusion}
+                      </span>
+                    )}
+                    {!viewingPago.id_citacion && !viewingPago.id_transfusion && 'No asociado'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-1">Paciente</p>
+                  {viewingPago.paciente_ci ? (
+                    <p 
+                      className="font-bold text-indigo-700 hover:underline cursor-pointer"
+                      onClick={() => navigate('/pacientes', { state: { openDetailsCi: viewingPago.paciente_ci } })}
+                    >
+                      {viewingPago.paciente_nombre}
+                    </p>
+                  ) : (
+                    <p className="font-bold text-gray-900">{viewingPago.paciente_nombre || 'No registrado'}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 font-medium mb-1">Auditoría de Registro</p>

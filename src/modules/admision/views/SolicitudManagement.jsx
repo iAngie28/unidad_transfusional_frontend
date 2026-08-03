@@ -362,7 +362,15 @@ const SolicitudManagement = () => {
                   filteredSolicitudes.map((sol) => (
                     <tr key={sol.nro} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => handleOpenDetails(sol)}>
                       <td className="px-6 py-4">
-                        <div className="font-semibold text-indigo-700 text-base">{sol.paciente_nombre}</div>
+                        <div 
+                          className="font-semibold text-indigo-700 text-base hover:underline cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/pacientes', { state: { openDetailsCi: sol.id_paciente } });
+                          }}
+                        >
+                          {sol.paciente_nombre}
+                        </div>
                         <div className="text-xs text-gray-500">Dr. {sol.medico_nombre}</div>
                         <div className="text-xs text-indigo-500">{sol.servicio_nombre}</div>
                         <div className="text-xs text-gray-400 font-mono mt-1">Nro: {sol.nro}</div>
@@ -775,7 +783,12 @@ const SolicitudManagement = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Paciente</p>
-                    <p className="font-semibold text-gray-900">{viewingSolicitud.paciente_nombre}</p>
+                    <p 
+                      className="font-semibold text-indigo-600 hover:underline cursor-pointer"
+                      onClick={() => navigate('/pacientes', { state: { openDetailsCi: viewingSolicitud.id_paciente } })}
+                    >
+                      {viewingSolicitud.paciente_nombre}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Médico Solicitante</p>
