@@ -94,7 +94,7 @@ const TransfusionManagement = () => {
       setServicios(serviciosData.results || serviciosData || []);
       
       if (location.state?.openDetailsId) {
-        const itemToOpen = trans.find(t => t.id === location.state.openDetailsId);
+        const itemToOpen = trans.find(t => String(t.id) === String(location.state.openDetailsId));
         if (itemToOpen) {
           handleOpenView(itemToOpen);
           navigate(location.pathname, { replace: true, state: {} });

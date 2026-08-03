@@ -48,7 +48,7 @@ const MedicoManagement = () => {
       setEspecialidades(especialidadesData.results || especialidadesData || []);
 
       if (location.state?.openDetailsId) {
-        const itemToOpen = meds.find(m => m.id === location.state.openDetailsId);
+        const itemToOpen = meds.find(m => String(m.id) === String(location.state.openDetailsId));
         if (itemToOpen) {
           handleOpenDetails(itemToOpen);
           navigate(location.pathname, { replace: true, state: {} });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente } from '../services/pacienteService';
 import { getSolicitudes, archivarSolicitud } from '../services/solicitudService';
 import { getTransfusiones } from '../../laboratorio/services/transfusionService';
@@ -95,6 +95,7 @@ const buildPacientePayload = (formData) => ({
 
 const PacienteManagement = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const boliviaToday = getBoliviaToday();
   const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +119,16 @@ const PacienteManagement = () => {
     setLoading(true);
     try {
       const data = await getPacientes();
-      setPacientes(data.results || data || []);
+      const pacs = data.results || data || [];
+      setPacientes(pacs);
+      
+      if (location.state?.openDetailsCi) {
+        const itemToOpen = pacs.find(p => String(p.ci) === String(location.state.openDetailsCi));
+        if (itemToOpen) {
+          handleOpenDetails(itemToOpen);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      }
     } catch (error) {
       console.error('Error fetching pacientes:', error);
     } finally {

@@ -131,7 +131,7 @@ const SolicitudManagement = () => {
       
       // Auto-open modal if navigated from history
       if (location.state?.openDetailsId) {
-        const itemToOpen = sols.find(s => s.nro === location.state.openDetailsId);
+        const itemToOpen = sols.find(s => String(s.nro) === String(location.state.openDetailsId));
         if (itemToOpen) {
           handleOpenDetails(itemToOpen);
           navigate(location.pathname, { replace: true, state: {} });
