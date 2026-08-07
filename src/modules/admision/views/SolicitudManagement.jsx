@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { getSolicitudes, createSolicitud, updateSolicitud, deleteSolicitud, archivarSolicitud } from '../services/solicitudService';
-import { getPacientes } from '../services/pacienteService';
+import { getPacientes, createPaciente } from '../services/pacienteService';
 import { getMedicos } from '../services/medicoService';
 import { getServicios } from '../services/servicioService';
 import { getTransfusiones } from '../../laboratorio/services/transfusionService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import SearchableSelect from '../../../components/common/SearchableSelect';
-import { FileText, Plus, Edit2, Trash2, Search, X, ActivitySquare, Clock, Archive, Eye, ListTree } from 'lucide-react';
+import { FileText, Plus, Edit2, Trash2, Search, X, ActivitySquare, Clock, Archive, Eye, ListTree, UserPlus } from 'lucide-react';
 import {
+  TEXT_PATTERNS,
   formatBackendErrors,
+  keepChars,
   onlyDecimal,
+  onlyDigits,
   onlyPositiveInteger,
   preventInvalidNumberKeys,
   showValidationAlert,
@@ -54,6 +57,45 @@ const getBoliviaNow = () => {
     time: `${parts.hour}:${parts.minute}`
   };
 };
+
+// ── Helpers para creación rápida de paciente ────────────────────────────────
+const initialPacienteForm = () => ({
+  ci: '',
+  nombre: '',
+  apellido_paterno: '',
+  apellido_materno: '',
+  edad_valor: '',
+  edad_unidad: 'ANOS',
+  fecha_nacimiento: '',
+  sexo: '',
+  historia_clinica: '',
+  grupo_sanguineo: ''
+});
+
+const calculateAge = (birthDateStr) => {
+  if (!birthDateStr) return null;
+  const birthDate = new Date(birthDateStr + 'T00:00:00');
+  const today = new Date();
+  let years = today.getFullYear() - birthDate.getFullYear();
+  let months = today.getMonth() - birthDate.getMonth();
+  let days = today.getDate() - birthDate.getDate();
+  if (months < 0 || (months === 0 && days < 0)) { years--; months += 12; }
+  if (days < 0) {
+    const prevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    days += prevMonth.getDate();
+    months--;
+    if (months < 0) { years--; months += 12; }
+  }
+  if (years > 0) return { valor: years, unidad: 'ANOS' };
+  if (months > 0) return { valor: months, unidad: 'MESES' };
+  return { valor: Math.max(1, days), unidad: 'DIAS' };
+};
+
+const buildPacientePayload = (formData) => ({
+  ...formData,
+  fecha_nacimiento: formData.fecha_nacimiento || null
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 const getInitialSolicitudForm = (userId = '') => ({
   fecha: getBoliviaNow().date,
@@ -107,6 +149,12 @@ const SolicitudManagement = () => {
 
   const [groupMismatchWarning, setGroupMismatchWarning] = useState(false);
   const [pendingFormData, setPendingFormData] = useState(null);
+
+  // Estados para el modal de creación rápida de paciente
+  const [isCreatePacienteModalOpen, setIsCreatePacienteModalOpen] = useState(false);
+  const [pacienteForm, setPacienteForm] = useState(initialPacienteForm());
+  const [savingPaciente, setSavingPaciente] = useState(false);
+  const [duplicateWarningPaciente, setDuplicateWarningPaciente] = useState(null);
   
   const [formData, setFormData] = useState(getInitialSolicitudForm(user?.id || ''));
 
@@ -181,6 +229,96 @@ const SolicitudManagement = () => {
     setGroupMismatchWarning(false);
     setPendingFormData(null);
   };
+
+  // ── Handlers para creación rápida de paciente ─────────────────────────────
+  const handleOpenCreatePacienteModal = () => {
+    setPacienteForm(initialPacienteForm());
+    setDuplicateWarningPaciente(null);
+    setIsCreatePacienteModalOpen(true);
+  };
+
+  const handleCloseCreatePacienteModal = () => {
+    setIsCreatePacienteModalOpen(false);
+    setPacienteForm(initialPacienteForm());
+    setDuplicateWarningPaciente(null);
+  };
+
+  const handleBlurValidationPaciente = async (field, value) => {
+    if (!value || value.trim() === '') return;
+    try {
+      const data = await getPacientes({ [field]: value });
+      const results = data.results || data || [];
+      const match = results.find(p => String(p[field]) === String(value));
+      if (match) {
+        setDuplicateWarningPaciente({
+          field: field === 'ci' ? 'Carnet de Identidad' : 'Historia Clínica',
+          value,
+          paciente: match
+        });
+      } else {
+        setDuplicateWarningPaciente(null);
+      }
+    } catch (error) {
+      console.error(`Error validating ${field}:`, error);
+    }
+  };
+
+  const handleSubmitNuevoPaciente = async (e) => {
+    e.preventDefault();
+    const errors = validateFormData(pacienteForm, [
+      { field: 'ci', label: 'CI', required: true, integer: true, maxLength: 20 },
+      { field: 'nombre', label: 'Nombre', required: true, pattern: TEXT_PATTERNS.lettersSpaces, message: 'solo se permiten letras y espacios.' },
+      { field: 'apellido_paterno', label: 'Apellido paterno', required: true, pattern: TEXT_PATTERNS.lettersSpaces, message: 'solo se permiten letras y espacios.' },
+      { field: 'apellido_materno', label: 'Apellido materno', pattern: TEXT_PATTERNS.lettersSpaces, message: 'solo se permiten letras y espacios.' },
+      { field: 'edad_valor', label: 'Edad', required: true, integer: true, min: 1 },
+      { field: 'edad_unidad', label: 'Unidad de edad', required: true },
+      { field: 'historia_clinica', label: 'Historia clínica', required: true, maxLength: 50 },
+      { field: 'grupo_sanguineo', label: 'Grupo sanguíneo', required: true }
+    ]);
+
+    if (pacienteForm.fecha_nacimiento && pacienteForm.edad_valor) {
+      const calc = calculateAge(pacienteForm.fecha_nacimiento);
+      if (calc && (String(calc.valor) !== String(pacienteForm.edad_valor) || calc.unidad !== pacienteForm.edad_unidad)) {
+        errors.push(`Incongruencia detectada: La edad ingresada (${pacienteForm.edad_valor} ${pacienteForm.edad_unidad.toLowerCase()}) no coincide con la calculada a partir de la fecha de nacimiento (${calc.valor} ${calc.unidad.toLowerCase()}). Por favor corrige uno de los dos campos.`);
+      }
+    }
+
+    if (showValidationAlert(errors)) return;
+
+    setSavingPaciente(true);
+    try {
+      const payload = buildPacientePayload(pacienteForm);
+      const nuevoPaciente = await createPaciente(payload);
+
+      // Refrescar lista de pacientes sin cerrar el modal de solicitud
+      const pacientesData = await getPacientes();
+      const nuevaLista = pacientesData.results || pacientesData || [];
+      setPacientes(nuevaLista);
+
+      // Preseleccionar el nuevo paciente en el formulario de solicitud
+      setFormData(prev => ({
+        ...prev,
+        id_paciente: nuevoPaciente.ci,
+        edad_valor: nuevoPaciente.edad_valor || prev.edad_valor,
+        edad_unidad: nuevoPaciente.edad_unidad || prev.edad_unidad,
+        fecha_nacimiento: nuevoPaciente.fecha_nacimiento || prev.fecha_nacimiento,
+        grupo: nuevoPaciente.grupo_sanguineo || prev.grupo
+      }));
+
+      // Cerrar el modal de paciente (el de solicitud permanece abierto)
+      handleCloseCreatePacienteModal();
+    } catch (error) {
+      console.error('Error al crear paciente:', error);
+      let errorMsg = 'Ocurrió un error al guardar el paciente. Verifica los datos.';
+      if (error.response && error.response.data) {
+        errorMsg += '\n\nDetalles:\n' + formatBackendErrors(error.response.data);
+      }
+      alert(errorMsg);
+    } finally {
+      setSavingPaciente(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleOpenDetails = async (solicitud) => {
     setViewingSolicitud(solicitud);
@@ -494,25 +632,38 @@ const SolicitudManagement = () => {
 
                 <div className="space-y-1.5 md:col-span-4">
                   <label className="text-sm font-medium text-gray-700">Paciente *</label>
-                  <SearchableSelect
-                    options={pacientes.map(p => ({
-                      value: p.ci,
-                      label: `${p.apellido_paterno} ${p.nombre} (CI: ${p.ci})`,
-                      data: p
-                    }))}
-                    value={formData.id_paciente}
-                    onChange={(val, selectedPaciente) => {
-                      setFormData({
-                        ...formData, 
-                        id_paciente: val,
-                        edad_valor: selectedPaciente?.edad_valor || formData.edad_valor,
-                        edad_unidad: selectedPaciente?.edad_unidad || formData.edad_unidad,
-                        fecha_nacimiento: selectedPaciente?.fecha_nacimiento || formData.fecha_nacimiento,
-                        grupo: selectedPaciente?.grupo_sanguineo || formData.grupo
-                      });
-                    }}
-                    placeholder="-- Buscar Paciente --"
-                  />
+                  <div className="flex gap-2 items-start">
+                    <div className="flex-1">
+                      <SearchableSelect
+                        options={pacientes.map(p => ({
+                          value: p.ci,
+                          label: `${p.apellido_paterno} ${p.nombre} (CI: ${p.ci})`,
+                          data: p
+                        }))}
+                        value={formData.id_paciente}
+                        onChange={(val, selectedPaciente) => {
+                          setFormData({
+                            ...formData, 
+                            id_paciente: val,
+                            edad_valor: selectedPaciente?.edad_valor || formData.edad_valor,
+                            edad_unidad: selectedPaciente?.edad_unidad || formData.edad_unidad,
+                            fecha_nacimiento: selectedPaciente?.fecha_nacimiento || formData.fecha_nacimiento,
+                            grupo: selectedPaciente?.grupo_sanguineo || formData.grupo
+                          });
+                        }}
+                        placeholder="-- Buscar Paciente --"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenCreatePacienteModal}
+                      title="Crear nuevo paciente rápidamente"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white text-xs font-semibold rounded-xl hover:bg-emerald-600 transition-colors shadow-sm shadow-emerald-500/30 whitespace-nowrap shrink-0"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Nuevo
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5 md:col-span-4">
@@ -886,6 +1037,217 @@ const SolicitudManagement = () => {
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
               <button onClick={handleCloseDetailsModal} className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Creación Rápida de Paciente ───────────────────────────────── */}
+      {isCreatePacienteModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-emerald-100 flex items-center justify-between bg-emerald-50/60">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <UserPlus className="text-emerald-600 w-5 h-5" />
+                Nuevo Paciente
+                <span className="text-xs font-normal text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full ml-1">creación rápida</span>
+              </h2>
+              <button
+                type="button"
+                onClick={handleCloseCreatePacienteModal}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Duplicate warning */}
+            {duplicateWarningPaciente && (
+              <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <span className="text-amber-600 font-bold text-lg mt-0.5">⚠</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Posible duplicado detectado</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    El {duplicateWarningPaciente.field} <strong>{duplicateWarningPaciente.value}</strong> ya existe para el paciente: <strong>{duplicateWarningPaciente.paciente.apellido_paterno} {duplicateWarningPaciente.paciente.nombre}</strong>.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Body - Form */}
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              <form id="quickPacienteForm" onSubmit={handleSubmitNuevoPaciente} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700">Carnet de Identidad (CI) *</label>
+                  <input
+                    type="text"
+                    required
+                    inputMode="numeric"
+                    maxLength={20}
+                    pattern="[0-9]+"
+                    title="Solo se permiten números"
+                    value={pacienteForm.ci}
+                    onBlur={(e) => handleBlurValidationPaciente('ci', e.target.value)}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, ci: onlyDigits(e.target.value) })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                    placeholder="Ej: 1234567"
+                  />
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-sm font-medium text-gray-700">Nombre *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={100}
+                    value={pacienteForm.nombre}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, nombre: keepChars(e.target.value, 'lettersSpaces') })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Apellido Paterno *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={100}
+                    value={pacienteForm.apellido_paterno}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, apellido_paterno: keepChars(e.target.value, 'lettersSpaces') })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Apellido Materno</label>
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={pacienteForm.apellido_materno}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, apellido_materno: keepChars(e.target.value, 'lettersSpaces') })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Edad *</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    value={pacienteForm.edad_valor}
+                    onKeyDown={preventInvalidNumberKeys}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, edad_valor: onlyPositiveInteger(e.target.value) })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Unidad de edad *</label>
+                  <select
+                    required
+                    value={pacienteForm.edad_unidad}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, edad_unidad: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                  >
+                    <option value="DIAS">Días</option>
+                    <option value="MESES">Meses</option>
+                    <option value="ANOS">Años</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Fecha de nacimiento</label>
+                  <input
+                    type="date"
+                    max={getBoliviaNow().date}
+                    value={pacienteForm.fecha_nacimiento || ''}
+                    onChange={(e) => {
+                      const dateValue = e.target.value;
+                      setPacienteForm(prev => {
+                        const newData = { ...prev, fecha_nacimiento: dateValue };
+                        if (!prev.edad_valor && dateValue) {
+                          const ageCalc = calculateAge(dateValue);
+                          if (ageCalc) { newData.edad_valor = ageCalc.valor; newData.edad_unidad = ageCalc.unidad; }
+                        }
+                        return newData;
+                      });
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Sexo</label>
+                  <select
+                    value={pacienteForm.sexo}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, sexo: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    <option value="M">Masculino</option>
+                    <option value="F">Femenino</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">N° Historia Clínica *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={50}
+                    value={pacienteForm.historia_clinica}
+                    onBlur={(e) => handleBlurValidationPaciente('historia_clinica', e.target.value)}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, historia_clinica: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700">Grupo Sanguíneo *</label>
+                  <select
+                    required
+                    value={pacienteForm.grupo_sanguineo}
+                    onChange={(e) => setPacienteForm({ ...pacienteForm, grupo_sanguineo: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-bold text-red-700"
+                  >
+                    <option value="" className="text-gray-900 font-normal">-- Seleccionar --</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                  </select>
+                </div>
+
+              </form>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCloseCreatePacienteModal}
+                disabled={savingPaciente}
+                className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="quickPacienteForm"
+                disabled={savingPaciente}
+                className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-600/20 flex items-center gap-2 disabled:opacity-60"
+              >
+                {savingPaciente ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Guardando...</>
+                ) : (
+                  <><UserPlus className="w-4 h-4" />Registrar Paciente</>
+                )}
               </button>
             </div>
           </div>
