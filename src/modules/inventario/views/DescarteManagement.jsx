@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getDescartes, createDescarte, updateDescarte, deleteDescarte } from '../services/descarteService';
 import { getHemocomponentes } from '../services/hemocomponenteService';
 import { getHospitales } from '../services/hospitalService';
+import { useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Edit2, Search, X, AlertTriangle } from 'lucide-react';
 import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
@@ -52,6 +53,7 @@ const getInitialDescarteForm = () => ({
 });
 
 const DescarteManagement = () => {
+  const navigate = useNavigate();
   const [descartes, setDescartes] = useState([]);
   const [hemocomponentes, setHemocomponentes] = useState([]);
   const [hospitales, setHospitales] = useState([]);
@@ -236,8 +238,14 @@ const DescarteManagement = () => {
                 ) : (
                   filteredDescartes.map((d) => (
                     <tr key={d.id} className="hover:bg-gray-50/50 transition-colors group">
-                      <td className="px-6 py-4 font-mono font-bold text-gray-800">
-                        {d.nro_bolsa}
+                      <td className="px-6 py-4">
+                        <div
+                          className="font-mono font-bold text-indigo-700 hover:underline cursor-pointer"
+                          onClick={() => navigate('/hemocomponentes', { state: { openDetailsNroBolsa: d.nro_bolsa } })}
+                          title="Ver detalles del hemocomponente"
+                        >
+                          {d.nro_bolsa}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`font-semibold px-2 py-1 rounded-lg border text-xs ${

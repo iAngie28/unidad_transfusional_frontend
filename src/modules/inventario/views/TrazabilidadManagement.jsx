@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getTrazabilidades, createTrazabilidad, updateTrazabilidad, deleteTrazabilidad } from '../services/trazabilidadService';
 import { getHemocomponentes } from '../services/hemocomponenteService';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { ListTree, Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 import { formatBackendErrors, showValidationAlert, validateFormData } from '../../../utils/formValidation';
 
@@ -52,6 +53,7 @@ const getInitialTrazabilidadForm = (userId = '') => ({
 
 const TrazabilidadManagement = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [trazabilidades, setTrazabilidades] = useState([]);
   const [hemocomponentes, setHemocomponentes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -227,8 +229,14 @@ const TrazabilidadManagement = () => {
                 ) : (
                   filteredTrazabilidades.map((t) => (
                     <tr key={t.id} className="hover:bg-gray-50/50 transition-colors group">
-                      <td className="px-6 py-4 font-mono font-bold text-gray-800">
-                        {t.nro_bolsa}
+                      <td className="px-6 py-4">
+                        <div
+                          className="font-mono font-bold text-indigo-700 hover:underline cursor-pointer"
+                          onClick={() => navigate('/hemocomponentes', { state: { openDetailsNroBolsa: t.nro_bolsa } })}
+                          title="Ver detalles del hemocomponente"
+                        >
+                          {t.nro_bolsa}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-semibold text-cyan-700 bg-cyan-50 px-2 py-1 rounded-lg border border-cyan-100">

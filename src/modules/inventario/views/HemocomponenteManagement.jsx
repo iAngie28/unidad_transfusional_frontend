@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getHemocomponentes, createHemocomponente, updateHemocomponente, deleteHemocomponente } from '../services/hemocomponenteService';
 import { getTrazabilidades } from '../services/trazabilidadService';
 import { Droplet, Plus, Edit2, Trash2, Search, X, Package, Eye, ListTree, Activity } from 'lucide-react';
@@ -81,6 +82,8 @@ const HemocomponenteManagement = () => {
   const [loadingTrazabilidad, setLoadingTrazabilidad] = useState(false);
   const [search, setSearch] = useState('');
   
+  const location = useLocation();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState(getInitialFormData());
 
   useEffect(() => {
@@ -91,7 +94,17 @@ const HemocomponenteManagement = () => {
     setLoading(true);
     try {
       const data = await getHemocomponentes();
-      setHemocomponentes(data.results || data || []);
+      const hemos = data.results || data || [];
+      setHemocomponentes(hemos);
+
+      // Auto-abrir detalles si se navegó desde otra vista con openDetailsNroBolsa
+      if (location.state?.openDetailsNroBolsa) {
+        const itemToOpen = hemos.find(h => String(h.nro_bolsa) === String(location.state.openDetailsNroBolsa));
+        if (itemToOpen) {
+          handleOpenDetails(itemToOpen);
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      }
     } catch (error) {
       console.error('Error fetching hemocomponentes:', error);
     } finally {
